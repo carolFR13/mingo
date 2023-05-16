@@ -1,0 +1,8 @@
+# Virtual environment
+*venv*
+
+# Cache files
+*cache*
+
+# Python package
+*egg-info*
