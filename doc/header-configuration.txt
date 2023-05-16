@@ -10,13 +10,25 @@ HEADER
         Detector - X dimension [mm]:
         Detector - Y dimension [mm]:
         Detector - Z dimension [mm]:
-    PLANE
-        Plane number []: First is 1, last is 4.
-        Z coordinate [mm]:
-        Absorption plane - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
-        Absorption plane - Z coordinate [mm]:
-        Absorption plane - Thickness [mm]:
-    EVENT
+    ACTIVE PLANES
+        Plane 1 - Z coordinate [mm]: 0 by definition
+        Plane 2 - Z coordinate [mm]:
+        Plane 3 - Z coordinate [mm]:
+        Plane 4 - Z coordinate [mm]:
+    PASSIVE PLANES
+        Plane 1 - Z coordinate [mm]:
+        Plane 2 - Z coordinate [mm]:
+        Plane 3 - Z coordinate [mm]:
+        Plane 4 - Z coordinate [mm]:
+        Plane 1 - Thickness [mm]:
+        Plane 2 - Thickness [mm]:
+        Plane 3 - Thickness [mm]:
+        Plane 4 - Thickness [mm]:
+        Plane 1 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+        Plane 2 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+        Plane 3 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+        Plane 4 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+   EVENT
         Event number []:
         Initial energy [GeV]:
         Initial X [mm]: Measured from center of plane, positive to the right.
@@ -30,33 +42,3 @@ HEADER
         Y [mm]: Measured from center of plane, right handed frame.
         Time since first impact [ns]:
 DATA
-    1   1000    0.8 0.8 0   1000    1000    1000
-    1   0   null    null    null
-    2   100 null    null    null
-    3   200 null    null    null
-    4   400 null    null    null
-    1   0.8 0   0   0   0   24
-    1	0	0	0	0
-    2	-0.07172	-0.9398	10	0.3692
-    3	-1.478	-2.662	20	0.7113
-    4	-12.21	4.655	42.02	1.589
-    3	4.782	-1.086	21.69	0.901
-    4	-10.07	-18.65	41.95	1.767
-    4	-4.43	-32.29	40	2.005
-    2	-0.9686	-0.2483	10	0.3695
-    3	-3.241	3.25	20	0.7339
-    3	4.556e-05	2.288	20.05	0.8806
-    2	-0.09783	-0.74	10	0.3683
-    3	-0.9577	-2.49	20	0.7084
-    3	-0.9664	-2.509	20.11	0.712
-    2	-0.1496	0.05536	10	0.367
-    3	0.08875	0.6635	20	0.7014
-    3	-0.4356	0.1738	22.11	0.7711
-    3	-0.4356	0.1738	22.11	0.7711
-    3	-0.4356	0.1738	22.11	0.7711
-    4	10.28	-15.49	40	1.65
-    2	20.67	-3.364	11.23	1.626
-    3	13.52	-1.192	20.93	1.218
-    3	0.0002592	0.2351	20.64	0.7218
-    2	6.831	-2.156	10	0.4779
-    2	2.383	0.395	10	0.3809
