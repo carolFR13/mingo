@@ -1,0 +1,46 @@
+HEADER
+    CASE
+        Particle []: gamma (0), electron (1), muon (2), neutron (3), proton (4)
+        Number of events []:
+        Emin [MeV]:
+        Emax [MeV]:
+        E distribution: constant (0), gaussian (1), exponential (2)
+        Theta min [deg]:
+        Theta max [deg]:
+        Detector plane - X dimension [mm]:
+        Detector plane - Y dimension [mm]:
+        Detector plane - Z dimension [mm]:
+    ACTIVE PLANES
+        Plane 1 - Z coordinate [mm]: 0 by definition
+        Plane 2 - Z coordinate [mm]:
+        Plane 3 - Z coordinate [mm]:
+        Plane 4 - Z coordinate [mm]:
+    PASSIVE PLANES
+        Plane 1 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 2 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 3 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 4 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 1 - Thickness [mm]:
+        Plane 2 - Thickness [mm]:
+        Plane 3 - Thickness [mm]:
+        Plane 4 - Thickness [mm]:
+        Plane 1 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+        Plane 2 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+        Plane 3 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+        Plane 4 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
+   EVENT
+        Event number []:
+        Initial energy [MeV]:
+        Initial X [mm]: Measured from center of plane, positive to the right
+        Initial Y [mm]: Measured from center of plane, right handed frame
+        Initial Z [mm]: 0 by definition
+        Initial theta [deg]:
+        Initial phi [deg]:
+        Number of hits []:
+    HIT
+        Plane number []: First is 1, last is 4
+        X [mm]: Measured from center of plane, positive to the right
+        Y [mm]: Measured from center of plane, right handed frame
+        Z [mm]: Measured downwards from first active plane
+        Time since first impact [ns]:
+DATA

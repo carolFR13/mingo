@@ -1,3 +1,3 @@
-from .utils import format_source
+from .utils import reformat
 
-__all__ = ["format_source"]
+__all__ = ["reformat"]

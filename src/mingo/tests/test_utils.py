@@ -1,8 +1,9 @@
-from mingo import format_source
+from mingo import reformat
 import pytest
 import platform
 import tempfile
 import os
+from pathlib import Path
 
 MOCK_SOURCE = """----- FILE HEADER ----------------------------------
 Event_Number	Ini_E[MeV]	Ini_X[cm]	Ini_Y[cm]	Ini_Z[cm]	Ini_Theta	Ini_Phi	Number_of_hits
@@ -53,10 +54,10 @@ EXPECTED_HEADER = """HEADER
         Plane 3 - Z coordinate [mm]:
         Plane 4 - Z coordinate [mm]:
     PASSIVE PLANES
-        Plane 1 - Z coordinate [mm]:
-        Plane 2 - Z coordinate [mm]:
-        Plane 3 - Z coordinate [mm]:
-        Plane 4 - Z coordinate [mm]:
+        Plane 1 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 2 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 3 - Z coordinate [mm]: Measured downwards from first active plane
+        Plane 4 - Z coordinate [mm]: Measured downwards from first active plane
         Plane 1 - Thickness [mm]:
         Plane 2 - Thickness [mm]:
         Plane 3 - Thickness [mm]:
@@ -68,17 +69,17 @@ EXPECTED_HEADER = """HEADER
    EVENT
         Event number []:
         Initial energy [MeV]:
-        Initial X [mm]: Measured from center of plane, positive to the right.
+        Initial X [mm]: Measured from center of plane, positive to the right
         Initial Y [mm]: Measured from center of plane, right handed frame
-        Initial Z [mm]: First is 0 by definition.
+        Initial Z [mm]: 0 by definition
         Initial theta [deg]:
         Initial phi [deg]:
         Number of hits []:
     HIT
-        Plane number []: First is 1, last is 4.
-        X [mm]: Measured from center of plane, positive to the right.
-        Y [mm]: Measured from center of plane, right handed frame.
-        Z [mm]:
+        Plane number []: First is 1, last is 4
+        X [mm]: Measured from center of plane, positive to the right
+        Y [mm]: Measured from center of plane, right handed frame
+        Z [mm]: Measured downwards from first active plane
         Time since first impact [ns]:
 DATA\n"""
 
@@ -109,24 +110,31 @@ def test_source_files():
         file.write(MOCK_SOURCE)
 
     yield source
-
     os.remove(source)
 
 
-@pytest.mark.parametrize("output", ["delete.txt"])
-def test_format_source(monkeypatch, output, test_source_files) -> None:
+def test_reformat(monkeypatch) -> None:
 
+    # Create mock source file
+    if platform.system() == "Darwin":
+        tmp = "/tmp"
+    else:
+        tmp = tempfile.gettempdir()
+    source = Path(tmp, "mock_source.txt")
+    source.write_text(MOCK_SOURCE)
+
+    # Setup mock values for interactive input
     user_inputs = iter(["800", "800", "16.2", "10.4"])
 
     def mock_input(_):
         return next(user_inputs)
-
     monkeypatch.setattr("builtins.input", mock_input)
 
-    # Create file
-    format_source(test_source_files, output)
+    # Reformat mock source file
+    reformat(source)
 
-    with open(output, "r") as file:
+    with open(source, "r") as file:
+
         # Check header
         result = file.readline()
         for _ in range(45):
@@ -150,6 +158,8 @@ def test_format_source(monkeypatch, output, test_source_files) -> None:
             file.readline()
         assert file.readline() == EXPECTED_HIT
 
-    os.remove(output)
+    # Delete mock source file
+    source.unlink()
+    assert not source.exists()
 
     return None
