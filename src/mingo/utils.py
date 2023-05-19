@@ -60,7 +60,7 @@ def cm2mm(value: str) -> str:
     :return str: Length in mm.
     """
 
-    return f"{float(value) * 10:.5f}"
+    return f"{float(value) * 10:+.4e}"
 
 
 def reformat(
