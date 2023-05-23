@@ -10,7 +10,7 @@ from .errors import FormatError
 DETECTOR_COLS = ["id", "plane_size_x", "plane_size_y", "plane_size_z"]
 PLANE_COLS = ["id", "fk_detector", "num", "z", "abs_z", "abs_mat", "abs_thick"]
 EVENT_COLS = ["id", "fk_detector", "particle", "e_0", "theta", "phi", "n_hits"]
-HIT_COLS = ["id", "fk_event", "fk_plane", "x", "y", "z", "t"]
+HIT_COLS = ["id", "fk_event", "fk_plane", "plane", "x", "y", "z", "t"]
 HEADER_LINES = 45
 
 MATERIAL = {"0": "Pb", "1": "Fe", "2": "W", "3": "Polyethylene", "null": None}
@@ -41,6 +41,7 @@ class Database:
 
     def __init__(
         self,
+        database: Union[str, None],
         use_cnf: bool = True,
         cnf_path: str = "~/.my.cnf",
         drivername: str = "mariadb+mysqldb",
@@ -48,7 +49,6 @@ class Database:
         password: Union[str, None] = None,
         host: Union[str, None] = None,
         port: Union[int, None] = None,
-        database: Union[str, None] = None
     ) -> None:
 
         # Create database engine
@@ -68,6 +68,11 @@ class Database:
                 database=database
             )
         self.engine = create_engine(url, echo=False)
+
+        # Don't attempt to create database if database is None
+        if self.engine.url.database is None:
+            print("No database selected")
+            return None
 
         # Load or create database
         if sqlutils.database_exists(url):
@@ -195,6 +200,15 @@ class Database:
         :param source: Absolute or relative path to source file
         :return None:
         """
+        if not sqlutils.database_exists(self.engine.url):
+            raise FileNotFoundError(
+                f"Database '{self.engine.url.database}' not found"
+            )
+
+        print(
+            f"Filling '{self.engine.url.database}' database with "
+            f"data from {str(source_file)}."
+        )
 
         with open(source_file, "r") as source:
 

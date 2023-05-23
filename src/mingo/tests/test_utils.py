@@ -1,9 +1,7 @@
 from mingo import reformat
 import pytest
-import platform
-import tempfile
-import os
 from pathlib import Path
+from mock_data import make_mock_source
 
 MOCK_SOURCE = """----- FILE HEADER ----------------------------------
 Event_Number	Ini_E[MeV]	Ini_X[cm]	Ini_Y[cm]	Ini_Z[cm]	Ini_Theta	Ini_Phi	Number_of_hits
@@ -91,37 +89,18 @@ EXPECTED_PASSIVE_PLANES = (
     "null\t22\tnull\t222\tnull\t16.2\tnull\t10.4\tnull\t0\tnull\t0\n"
 )
 
-EXPECTED_EVENT = "1\t800\t0.00000\t0.00000\t0.00000\t0\t0\t24\n"
+EXPECTED_EVENT = "1\t800\t+0.0000e+00\t+0.0000e+00\t+0.0000e+00\t0\t0\t24\n"
 
-EXPECTED_HIT = "3\t-32.41000\t32.50000\t200.00000\t0.7339\n"
-
-
-@pytest.fixture
-def test_source_files():
-
-    if platform.system() == "Darwin":
-        tmp = "/tmp"
-    else:
-        tmp = tempfile.gettempdir()
-
-    # Create source file
-    source = f"{tmp}/source.txt"
-    with open(source, "w") as file:
-        file.write(MOCK_SOURCE)
-
-    yield source
-    os.remove(source)
+EXPECTED_HIT = "3\t-3.2410e+01\t+3.2500e+01\t+2.0000e+02\t0.7339\n"
 
 
-def test_reformat(monkeypatch) -> None:
+@pytest.mark.fixt_data(MOCK_SOURCE)
+def test_reformat(monkeypatch, make_mock_source: Path) -> None:
+    """
+    Ensure that original source files are properly reformatted
+    """
 
-    # Create mock source file
-    if platform.system() == "Darwin":
-        tmp = "/tmp"
-    else:
-        tmp = tempfile.gettempdir()
-    source = Path(tmp, "mock_source.txt")
-    source.write_text(MOCK_SOURCE)
+    source = make_mock_source
 
     # Setup mock values for interactive input
     user_inputs = iter(["800", "800", "16.2", "10.4"])
@@ -157,9 +136,5 @@ def test_reformat(monkeypatch) -> None:
         for _ in range(8):
             file.readline()
         assert file.readline() == EXPECTED_HIT
-
-    # Delete mock source file
-    source.unlink()
-    assert not source.exists()
 
     return None
