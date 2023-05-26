@@ -3,6 +3,8 @@
 
 # Cache files
 *cache*
+*.bkp
+*.dtmp
 
 # Python package
 *egg-info*
