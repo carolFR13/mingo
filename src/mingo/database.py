@@ -1,23 +1,30 @@
-from typing import Union
+from typing import Union, Iterable
 from pathlib import Path
 from sqlalchemy import (
     URL, create_engine, MetaData, Table, Column, ForeignKey, Integer, Double,
-    Enum, insert, select, func
+    Enum, select, func, UniqueConstraint
 )
+from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
 
-DETECTOR_COLS = ["id", "plane_size_x", "plane_size_y", "plane_size_z"]
-PLANE_COLS = ["id", "fk_detector", "num", "z", "abs_z", "abs_mat", "abs_thick"]
-EVENT_COLS = ["id", "fk_detector", "particle", "e_0", "theta", "phi", "n_hits"]
-HIT_COLS = ["id", "fk_event", "fk_plane", "plane", "x", "y", "z", "t"]
+# Expected columns for each table of the database
+CONFIG_COLS = [
+    "id", "fk_p1", "fk_p2", "fk_p3", "fk_p4", "z_p1", "z_p2", "z_p3", "z_p4"
+]
+PLANE_COLS = [
+    "id", "size_x", "size_y", "size_z", "abs_z", "abs_mat", "abs_thick"
+]
+EVENT_COLS = ["id", "fk_config", "particle", "e_0", "theta", "phi", "n_hits"]
+HIT_COLS = ["id", "fk_event", "plane", "x", "y", "z", "t"]
+
+# Expected extension of the header section of source files
 HEADER_LINES = 45
 
-MATERIAL = {"0": "Pb", "1": "Fe", "2": "W", "3": "Polyethylene", "null": None}
-MATERIAL_ENUM = Enum("Pb", "Fe", "W", "Polyethylene")
-PARTICLE = {
-    "0": "gamma", "1": "electron", "2": "muon", "3": "neutron", "4": "proton"
-}
+# Valid values for absorption plane materials and primary particles
+MATERIAL = ("Pb", "Fe", "W", "Polyethylene")
+MATERIAL_ENUM = Enum("Pb", "Fe", "W", "Polyethylene", "")
+PARTICLE = ("gamma", "electron", "muon", "neutron", "proton")
 PARTICLE_ENUM = Enum("gamma", "electron", "muon", "neutron", "proton")
 
 
@@ -77,7 +84,7 @@ class Database:
         # Load or create database
         if sqlutils.database_exists(url):
             self.meta = MetaData()
-            self.detector = self.autoload("detector", DETECTOR_COLS)
+            self.config = self.autoload("config", CONFIG_COLS)
             self.plane = self.autoload("plane", PLANE_COLS)
             self.event = self.autoload("event", EVENT_COLS)
             self.hit = self.autoload("hit", HIT_COLS)
@@ -124,32 +131,41 @@ class Database:
 
         self.meta = MetaData()
 
-        self.detector = Table(
-            "detector",
+        self.config = Table(
+            "config",
             self.meta,
-            Column("id", Integer, primary_key=True),
-            Column("plane_size_x", Double, nullable=False),
-            Column("plane_size_y", Double, nullable=False),
-            Column("plane_size_z", Double, nullable=False),
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("fk_p1", Integer, ForeignKey("plane.id"), nullable=False),
+            Column("fk_p2", Integer, ForeignKey("plane.id"), nullable=False),
+            Column("fk_p3", Integer, ForeignKey("plane.id"), nullable=False),
+            Column("fk_p4", Integer, ForeignKey("plane.id"), nullable=False),
+            Column("z_p1", Double, nullable=False),
+            Column("z_p2", Double, nullable=False),
+            Column("z_p3", Double, nullable=False),
+            Column("z_p4", Double, nullable=False),
+            UniqueConstraint("fk_p1", "fk_p2", "fk_p3", "fk_p4")
         )
 
         self.plane = Table(
             "plane",
             self.meta,
-            Column("id", Integer, primary_key=True),
-            Column("fk_detector", Integer, ForeignKey("detector.id")),
-            Column("num", Integer, nullable=False),
-            Column("z", Double, nullable=False),
-            Column("abs_z", Double, nullable=True),
-            Column("abs_mat", MATERIAL_ENUM, nullable=True),
-            Column("abs_thick", Double, nullable=True)
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("size_x", Double, nullable=False),
+            Column("size_y", Double, nullable=False),
+            Column("size_z", Double, nullable=False),
+            Column("abs_z", Double, nullable=True),             # 0 = NULL
+            Column("abs_mat", MATERIAL_ENUM, nullable=False),   # "0" = NULL
+            Column("abs_thick", Double, nullable=False),        # 0 = NULL
+            UniqueConstraint(
+                "size_x", "size_y", "size_z", "abs_z", "abs_mat", "abs_thick"
+            )
         )
 
         self.event = Table(
             "event",
             self.meta,
             Column("id", Integer, primary_key=True),
-            Column("fk_detector", Integer, ForeignKey("detector.id")),
+            Column("fk_config", Integer, ForeignKey("config.id")),
             Column("particle", PARTICLE_ENUM, nullable=False),
             Column("e_0", Double, nullable=False),
             Column("theta", Double, nullable=False),
@@ -160,9 +176,8 @@ class Database:
         self.hit = Table(
             "hit",
             self.meta,
-            Column("id", Integer, primary_key=True),
+            Column("id", Integer, primary_key=True, autoincrement=True),
             Column("fk_event", Integer, ForeignKey("event.id")),
-            Column("fk_plane", Integer, ForeignKey("plane.id")),
             Column("plane", Integer, nullable=False),
             Column("x", Double, nullable=True),
             Column("y", Double, nullable=True),
@@ -193,22 +208,58 @@ class Database:
 
         return None
 
-    def fill(self, source_file: Path) -> None:
+    def batch_fill(self, sources: Union[Path, Iterable[Path]]) -> None:
+        """
+        Fill database from a set of source files.
+
+        :param sources: Path to directory with sources or list of paths
+        to source files. Directories are assumed to just contain sources.
+        """
+
+        if isinstance(sources, Path) and sources.is_dir():
+            _sources = [source for source in sources.iterdir()]
+        elif isinstance(sources, Iterable):
+            _sources = list(sources)
+        else:
+            raise TypeError(
+                f"Unexpected input type: {type(sources)}. "
+                f"Must be Path or Iterable[Path]."
+            )
+        for source in _sources:
+            if not source.is_file():
+                raise ValueError(f"{str(source)} is not a file!")
+            else:
+                self.fill(source)
+
+        return None
+
+    def fill(self, source_file: Union[str, Path]) -> None:
         """
         Fill database from source file
+
+        NOTE: Since mariadb treats each NULL value as unique, the absence
+        of an absorption plane is represented by zero values in
+        the 'abs_z', 'abs_mat' and 'abs_thick' columns of the plane table.
+        Zero is an unfeasible value for these three parameters for the
+        following reasons:
+            - 'abs_thick' must be greater than 0 for any real plane.
+            - 'abs_mat' is the name of a material, which cannot be 0.
+            - 'abs_z' must be greater than 'abs_thick'.
 
         :param source: Absolute or relative path to source file
         :return None:
         """
+        # Cast input to Path if needed
+        if isinstance(source_file, str):
+            source_file = Path(source_file)
+
+        # Ensure that database exists before proceeding
         if not sqlutils.database_exists(self.engine.url):
             raise FileNotFoundError(
                 f"Database '{self.engine.url.database}' not found"
             )
 
-        print(
-            f"Filling '{self.engine.url.database}' database with "
-            f"data from {str(source_file)}."
-        )
+        print(f"Filling {self.engine.url.database} with {str(source_file)}")
 
         with open(source_file, "r") as source:
 
@@ -220,66 +271,70 @@ class Database:
                     f"Unexpected header in source file '{source_file.name}'"
                 )
 
-            # Insert detector data
-            case_data = source.readline()[:-1].split("\t")
-            if case_data[0] in PARTICLE.keys():
-                particle = PARTICLE[case_data[0]]
-            else:
-                raise KeyError(
-                    f"Unexpected particle id {case_data[0]}"
-                )
-
-            detector_values = {
-                "plane_size_x": float(case_data[7]),
-                "plane_size_y": float(case_data[8]),
-                "plane_size_z": float(case_data[9])
-            }
-
-            with self.engine.connect() as conn:
-                detector_id, = conn.scalars(
-                    insert(self.detector).returning(self.detector.c.id),
-                    detector_values
-                )
-                conn.commit()
-
-            # Insert plane data
-            plane_z = source.readline()[:-1].split("\t")
+            # Read case and plane data from source file
+            config_data = source.readline()[:-1].split("\t")
+            active_plane_data = source.readline()[:-1].split("\t")
             passive_plane_data = source.readline()[:-1].split("\t")
-            plane_values: list[dict[str, Union[None, str, float, int]]] = []
 
-            for idx, (z, a_z, a_t, a_m) in enumerate(zip(
-                plane_z,
+            # Get particle type
+            if config_data[0] == "null":
+                particle = None
+            else:
+                particle = PARTICLE[int(config_data[0])]
+
+            # Get plane dimensions and absorption plane properties
+            plane_values: list[dict[str, Union[None, str, float, int]]] = []
+            plane_dimensions = {
+                "x": float(config_data[7]),
+                "y": float(config_data[8]),
+                "z": float(config_data[9])
+            }
+            for idx, (a_z, a_t, a_m) in enumerate(zip(
                 passive_plane_data[:4],
                 passive_plane_data[4:8],
                 passive_plane_data[8:]
             )):
-                plane_values.append({"fk_detector": detector_id})
-                plane_values[idx]["num"] = idx + 1
-                plane_values[idx]["z"] = float(z)
-                if a_z == "null":
-                    plane_values[idx]["abs_z"] = None
-                else:
-                    plane_values[idx]["abs_z"] = float(a_z)
-                if a_t == "null":
-                    plane_values[idx]["abs_thick"] = None
-                else:
-                    plane_values[idx]["abs_thick"] = float(a_t)
-                if a_m in MATERIAL.keys():
-                    plane_values[idx]["abs_mat"] = MATERIAL[a_m]
-                else:
-                    raise KeyError(f"Unexpected material id {a_m}")
+                plane_values.append({
+                    "size_x": plane_dimensions["x"],
+                    "size_y": plane_dimensions["y"],
+                    "size_z": plane_dimensions["z"],
+                    "abs_z": 0 if a_z == "null" else float(a_z),
+                    "abs_mat": "0" if a_m == "null" else MATERIAL[int(a_m)],
+                    "abs_thick": 0 if a_t == "null" else float(a_t)
+                })
 
             with self.engine.connect() as conn:
-                p1_id, p2_id, p3_id, p4_id = conn.scalars(
-                    insert(self.plane).returning(self.plane.c.id),
-                    plane_values
-                )
-                conn.commit()
 
-                # Get id for the last event in database
-                _event_id = conn.scalar(select(func.max(self.event.c.id)))
+                # Insert rows into plane and save plane ids
+                plane_stmt = insert(self.plane).values(plane_values)
+                plane_stmt = plane_stmt.on_duplicate_key_update(
+                    size_x=plane_stmt.inserted.size_x
+                ).returning(self.plane.c.id)
+                fk_p_list = [fk_p for fk_p in conn.scalars(plane_stmt)]
+
+                # Get z coordinates and configuration ids of detection modules
+                config_values = {
+                    "fk_p1": fk_p_list[0],
+                    "fk_p2": fk_p_list[1],
+                    "fk_p3": fk_p_list[2],
+                    "fk_p4": fk_p_list[3],
+                    "z_p1": float(active_plane_data[0]),
+                    "z_p2": float(active_plane_data[1]),
+                    "z_p3": float(active_plane_data[2]),
+                    "z_p4": float(active_plane_data[3])
+                }
+
+                # Insert row into config table and save id
+                stmt = insert(self.config).values(config_values)
+                stmt = stmt.on_duplicate_key_update(z_p1=stmt.inserted.z_p1)
+                stmt = stmt.returning(self.config.c.id)
+                config_id, = conn.scalars(stmt)
+
+                # Get the id of the last event in the database
+                _event_id, = conn.scalars(select(func.max(self.event.c.id)))
                 event_id = _event_id if _event_id is not None else 0
-                plane_id = {"1": p1_id, "2": p2_id, "3": p3_id, "4": p4_id}
+
+                conn.commit()
 
             # Insert events and values
             event_list: list[dict[str, Union[int, float, str, None]]] = []
@@ -289,7 +344,7 @@ class Database:
                 match len(data):
                     case 8:
                         event_list.append({
-                            "fk_detector": detector_id,
+                            "fk_config": config_id,
                             "particle": particle,
                             "e_0": float(data[1]),
                             "theta": float(data[5]),
@@ -300,7 +355,6 @@ class Database:
                     case 5:
                         hit_list.append({
                             "fk_event": event_id,
-                            "fk_plane": plane_id[data[0]],
                             "plane": int(data[0]),
                             "x": float(data[1]),
                             "y": float(data[2]),

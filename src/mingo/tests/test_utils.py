@@ -1,7 +1,7 @@
 from mingo import reformat
 import pytest
 from pathlib import Path
-from mock_data import make_mock_source
+from mingo.tests.mock_data import make_mock_source
 
 MOCK_SOURCE = """----- FILE HEADER ----------------------------------
 Event_Number	Ini_E[MeV]	Ini_X[cm]	Ini_Y[cm]	Ini_Z[cm]	Ini_Theta	Ini_Phi	Number_of_hits

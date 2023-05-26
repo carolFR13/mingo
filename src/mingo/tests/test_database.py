@@ -3,7 +3,7 @@ from typing import Union
 import pytest
 from pathlib import Path
 from sqlalchemy import Table, MetaData, select
-from mock_data import make_mock_source, make_mock_database
+from mingo.tests.mock_data import make_mock_source, make_mock_database
 import time
 
 MOCK_SOURCE = """HEADER
@@ -82,15 +82,14 @@ null	22	null	222	null	10.4	null	16.2	null	0	null	0
 2	23.83000	3.95000	100.00000	0.3809
 """
 
-EXPECTED_DETECTOR = (1, 999, 999, 22)
+EXPECTED_CONFIG = (1, 1, 2, 1, 3, 0, 100, 200, 400)
 EXPECTED_PLANE = [
-    (1, 1, 1, 0, None, None, None),
-    (2, 1, 2, 100, 22, "Pb", 10.4),
-    (3, 1, 3, 200, None, None, None),
-    (4, 1, 4, 400, 222, "Pb", 16.2)
+    (1, 999, 999, 22, 0, "", 0),
+    (2, 999, 999, 22, 22, "Pb", 10.4),
+    (3, 999, 999, 22, 222, "Pb", 16.2)
 ]
 EXPECTED_EVENT = (1, 1, "electron", 800, 0, 0, 24)
-EXPECTED_HIT = (24, 1, 2, 2, 23.83, 3.95, 100, 0.3809)
+EXPECTED_HIT = (24, 1, 2, 23.83, 3.95, 100, 0.3809)
 
 
 @pytest.mark.parametrize(
@@ -130,19 +129,19 @@ def test_create_database(make_mock_database: Database) -> None:
     # MetaData object exists and all tables are present
     assert isinstance(db.meta, MetaData)
     table_list = [table for table in db.meta.tables.keys()]
-    assert table_list == ["detector", "plane", "event", "hit"]
+    assert table_list == ["config", "plane", "event", "hit"]
 
     # All tables are instances of Table
-    assert isinstance(db.detector, Table)
+    assert isinstance(db.config, Table)
     assert isinstance(db.plane, Table)
     assert isinstance(db.event, Table)
     assert isinstance(db.hit, Table)
 
     # Each table has the expected number of columns
-    assert len(db.detector.c.keys()) == 4
+    assert len(db.config.c.keys()) == 9
     assert len(db.plane.c.keys()) == 7
     assert len(db.event.c.keys()) == 7
-    assert len(db.hit.c.keys()) == 8
+    assert len(db.hit.c.keys()) == 7
 
     return None
 
@@ -158,19 +157,19 @@ def test_load_database(make_mock_database: Database) -> None:
     # MetaData object exists and all tables are present
     assert isinstance(db.meta, MetaData)
     table_list = [table for table in db.meta.tables.keys()]
-    assert table_list == ["detector", "plane", "event", "hit"]
+    assert table_list == ["config", "plane", "event", "hit"]
 
     # All tables are instances of Table
-    assert isinstance(db.detector, Table)
+    assert isinstance(db.config, Table)
     assert isinstance(db.plane, Table)
     assert isinstance(db.event, Table)
     assert isinstance(db.hit, Table)
 
     # Each table has the expected number of columns
-    assert len(db.detector.c.keys()) == 4
+    assert len(db.config.c.keys()) == 9
     assert len(db.plane.c.keys()) == 7
     assert len(db.event.c.keys()) == 7
-    assert len(db.hit.c.keys()) == 8
+    assert len(db.hit.c.keys()) == 7
 
     return None
 
@@ -187,9 +186,9 @@ def test_fill_database(make_mock_source, make_mock_database) -> None:
 
     with db.engine.connect() as conn:
 
-        # Check data in detector table
-        detector_data, = conn.execute(select(db.detector))
-        assert detector_data == EXPECTED_DETECTOR
+        # Check data in config table
+        config_data, = conn.execute(select(db.config))
+        assert config_data == EXPECTED_CONFIG
 
         # Check data in plane table
         planes_data = conn.execute(select(db.plane))
@@ -204,5 +203,30 @@ def test_fill_database(make_mock_source, make_mock_database) -> None:
         hit_data = list(conn.execute(select(db.hit)))
         assert len(hit_data) == EXPECTED_EVENT[-1]
         assert hit_data[-1] == EXPECTED_HIT
+
+    return None
+
+
+@pytest.mark.fixt_data(MOCK_SOURCE)
+def test_plane_uniqueness(make_mock_database, make_mock_source) -> None:
+    """
+    Ensure that the same plane or detector configuration does not appear
+    more than once in the database.
+    """
+
+    db: Database = make_mock_database
+    mock_source: Path = make_mock_source
+    db.fill(mock_source)
+    db.fill(mock_source)
+
+    with db.engine.connect() as conn:
+
+        config_data, = conn.execute(select(db.config))
+        assert config_data == EXPECTED_CONFIG
+
+        plane_data = conn.execute(select(db.plane)).fetchall()
+        assert len(plane_data) == 3
+        for result, expected in zip(plane_data, EXPECTED_PLANE):
+            assert result == expected
 
     return None
