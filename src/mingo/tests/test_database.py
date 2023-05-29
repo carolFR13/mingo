@@ -1,95 +1,47 @@
 from mingo import Database
-from typing import Union
+from typing import Union, Iterable
 import pytest
 from pathlib import Path
 from sqlalchemy import Table, MetaData, select
-from mingo.tests.mock_data import make_mock_source, make_mock_database
+from sqlalchemy.dialects.mysql import insert
+from mingo.tests.mock_data import (
+    make_mock_source, make_mock_database, MOCK_SOURCE_DATA, get_tmp
+)
 import time
-
-MOCK_SOURCE = """HEADER
-    CASE
-        Particle []: gamma (0), electron (1), muon (2), neutron (3), proton (4)
-        Number of events []:
-        Emin [MeV]:
-        Emax [MeV]:
-        E distribution: constant (0), gaussian (1), exponential (2)
-        Theta min [deg]:
-        Theta max [deg]:
-        Detector plane - X dimension [mm]:
-        Detector plane - Y dimension [mm]:
-        Detector plane - Z dimension [mm]:
-    ACTIVE PLANES
-        Plane 1 - Z coordinate [mm]: 0 by definition
-        Plane 2 - Z coordinate [mm]:
-        Plane 3 - Z coordinate [mm]:
-        Plane 4 - Z coordinate [mm]:
-    PASSIVE PLANES
-        Plane 1 - Z coordinate [mm]: Measured downwards from first active plane
-        Plane 2 - Z coordinate [mm]: Measured downwards from first active plane
-        Plane 3 - Z coordinate [mm]: Measured downwards from first active plane
-        Plane 4 - Z coordinate [mm]: Measured downwards from first active plane
-        Plane 1 - Thickness [mm]:
-        Plane 2 - Thickness [mm]:
-        Plane 3 - Thickness [mm]:
-        Plane 4 - Thickness [mm]:
-        Plane 1 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
-        Plane 2 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
-        Plane 3 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
-        Plane 4 - Material []: Pb (0), Fe (1), W (2), Polyethylene (3)
-   EVENT
-        Event number []:
-        Initial energy [MeV]:
-        Initial X [mm]: Measured from center of plane, positive to the right
-        Initial Y [mm]: Measured from center of plane, right handed frame
-        Initial Z [mm]: 0 by definition
-        Initial theta [deg]:
-        Initial phi [deg]:
-        Number of hits []:
-    HIT
-        Plane number []: First is 1, last is 4
-        X [mm]: Measured from center of plane, positive to the right
-        Y [mm]: Measured from center of plane, right handed frame
-        Z [mm]: Measured downwards from first active plane
-        Time since first impact [ns]:
-DATA
-1	10000	800	800	0	0	0	999	999	22
-0	100	200	400
-null	22	null	222	null	10.4	null	16.2	null	0	null	0
-1	800 	0.00000	0.00000	0.00000	0	0	24
-1	0.00000	0.00000	0.00000	0
-2	-0.71720	-9.39800	100.00000	0.3692
-3	-14.78000	-26.62000	200.00000	0.7113
-4	-122.10000	46.55000	420.20000	1.589
-3	47.82000	-10.86000	216.90000	0.901
-4	-100.70000	-186.50000	419.50000	1.767
-4	-44.30000	-322.90000	400.00000	2.005
-2	-9.68600	-2.48300	100.00000	0.3695
-3	-32.41000	32.50000	200.00000	0.7339
-3	0.00046	22.88000	200.50000	0.8806
-2	-0.97830	-7.40000	100.00000	0.3683
-3	-9.57700	-24.90000	200.00000	0.7084
-3	-9.66400	-25.09000	201.10000	0.712
-2	-1.49600	0.55360	100.00000	0.367
-3	0.88750	6.63500	200.00000	0.7014
-3	-4.35600	1.73800	221.10000	0.7711
-3	-4.35600	1.73800	221.10000	0.7711
-3	-4.35600	1.73800	221.10000	0.7711
-4	102.80000	-154.90000	400.00000	1.65
-2	206.70000	-33.64000	112.30000	1.626
-3	135.20000	-11.92000	209.30000	1.218
-3	0.00259	2.35100	206.40000	0.7218
-2	68.31000	-21.56000	100.00000	0.4779
-2	23.83000	3.95000	100.00000	0.3809
-"""
 
 EXPECTED_CONFIG = (1, 1, 2, 1, 3, 0, 100, 200, 400)
 EXPECTED_PLANE = [
-    (1, 999, 999, 22, 0, "", 0),
+    (1, 999, 999, 22, 0, "0", 0),
     (2, 999, 999, 22, 22, "Pb", 10.4),
     (3, 999, 999, 22, 222, "Pb", 16.2)
 ]
 EXPECTED_EVENT = (1, 1, "electron", 800, 0, 0, 24)
 EXPECTED_HIT = (24, 1, 2, 23.83, 3.95, 100, 0.3809)
+
+
+def make_sources(
+        name_list: Union[str, Iterable[str]],
+        data_list: Union[str, Iterable[str]]
+):
+    """
+    Create temporary source files
+
+    :param name: File's names with extension
+    :param data: File's content
+    """
+
+    tmp = get_tmp()
+    if isinstance(name_list, str) and isinstance(data_list, str):
+        name_list = [name_list]
+        data_list = [data_list]
+    sources = [Path(tmp, name) for name in name_list]
+    try:
+        for source, data in zip(sources, data_list):
+            source.write_text(data)
+            yield source
+    finally:
+        for source in sources:
+            source.unlink()
 
 
 @pytest.mark.parametrize(
@@ -174,13 +126,14 @@ def test_load_database(make_mock_database: Database) -> None:
     return None
 
 
-@pytest.mark.fixt_data(MOCK_SOURCE)
-def test_fill_database(make_mock_source, make_mock_database) -> None:
+def test_fill_database(make_mock_database) -> None:
     """
     Ensure that the database is properly filled and data is not corrupted
     """
 
-    source = make_mock_source
+    _source = make_sources("10-16-800.txt", MOCK_SOURCE_DATA["10-16-800"])
+    source = next(_source)
+
     db = make_mock_database
     db.fill(source)
 
@@ -207,26 +160,86 @@ def test_fill_database(make_mock_source, make_mock_database) -> None:
     return None
 
 
-@pytest.mark.fixt_data(MOCK_SOURCE)
-def test_plane_uniqueness(make_mock_database, make_mock_source) -> None:
-    """
-    Ensure that the same plane or detector configuration does not appear
-    more than once in the database.
-    """
+def test_plane_uniqueness(make_mock_database: Database) -> None:
 
-    db: Database = make_mock_database
-    mock_source: Path = make_mock_source
-    db.fill(mock_source)
-    db.fill(mock_source)
+    db = make_mock_database
 
-    with db.engine.connect() as conn:
+    planes = [
+        (None, 0, 0, 0, 0, "0", 0),
+        (None, 1, 0, 0, 0, "0", 0),
+        (None, 2, 0, 0, 0, "0", 0),
+        (None, 3, 0, 0, 0, "0", 0),
+        (None, 4, 0, 0, 0, "0", 0),
+        (None, 5, 0, 0, 0, "0", 0)
+    ]
 
-        config_data, = conn.execute(select(db.config))
-        assert config_data == EXPECTED_CONFIG
+    expected_plane_data = [
+        (1, 0, 0, 0, 0, "0", 0),
+        (2, 1, 0, 0, 0, "0", 0),
+        (3, 2, 0, 0, 0, "0", 0),
+        (4, 3, 0, 0, 0, "0", 0),
+        (5, 4, 0, 0, 0, "0", 0)
+    ]
 
-        plane_data = conn.execute(select(db.plane)).fetchall()
-        assert len(plane_data) == 3
-        for result, expected in zip(plane_data, EXPECTED_PLANE):
-            assert result == expected
+    # Test single inserts: u(nique) + d(uplicate) + u
+    first, = db.plane_insert(planes[0])
+    second, = db.plane_insert(planes[0])
+    third, = db.plane_insert(planes[1])
+    assert first == expected_plane_data[0]
+    assert second == first
+    assert third == expected_plane_data[1]
+
+    # Test batch insert: [u, d, u] + u
+    fourth = db.plane_insert([planes[2], planes[2], planes[3]])
+    fifth, = db.plane_insert(planes[4])
+    assert fourth[0] == expected_plane_data[2]
+    assert fourth[1] == expected_plane_data[2]
+    assert fourth[2] == expected_plane_data[3]
+    assert fifth == expected_plane_data[4]
+
+    return None
+
+
+def test_config_uniqueness(make_mock_database: Database) -> None:
+
+    db = make_mock_database
+
+    planes = [(None, 0, 0, 0, 0, "0", 0), (None, 1, 0, 0, 0, "0", 0)]
+    db.plane_insert(planes)
+
+    configs = [
+        (None, 1, 1, 1, 1, 0, 0, 0, 0),
+        (None, 1, 1, 1, 2, 0, 0, 0, 0),
+        (None, 1, 1, 2, 1, 0, 0, 0, 0),
+        (None, 1, 2, 1, 1, 0, 0, 0, 0),
+        (None, 2, 1, 1, 1, 0, 0, 0, 0)
+    ]
+
+    expected_result = [
+        (1, 1, 1, 1, 1, 0, 0, 0, 0),
+        (2, 1, 1, 1, 2, 0, 0, 0, 0),
+        (3, 1, 1, 2, 1, 0, 0, 0, 0),
+        (4, 1, 2, 1, 1, 0, 0, 0, 0),
+        (5, 2, 1, 1, 1, 0, 0, 0, 0)
+
+    ]
+
+    # Test single inserts: u + d + u
+    first, = db.insert_config(configs[0])
+    first_duplicated, = db.insert_config(configs[0])
+    second, = db.insert_config(configs[1])
+    assert first == expected_result[0]
+    assert first_duplicated == expected_result[0]
+    assert second == expected_result[1]
+
+    # Test batch inserts: [u, d, u] + u
+    third, third_duplicated, fourth = db.insert_config(
+        [configs[2], configs[2], configs[3]]
+    )
+    fifth, = db.insert_config(configs[4])
+    assert third == expected_result[2]
+    assert third_duplicated == third
+    assert fourth == expected_result[3]
+    assert fifth == expected_result[4]
 
     return None

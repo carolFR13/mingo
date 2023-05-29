@@ -1,12 +1,13 @@
-from typing import Union, Iterable
+from typing import Union, Iterable, Any, Sequence
 from pathlib import Path
 from sqlalchemy import (
     URL, create_engine, MetaData, Table, Column, ForeignKey, Integer, Double,
-    Enum, select, func, UniqueConstraint
+    Enum, select, func, UniqueConstraint, text
 )
 from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
+
 
 # Expected columns for each table of the database
 CONFIG_COLS = [
@@ -23,7 +24,7 @@ HEADER_LINES = 45
 
 # Valid values for absorption plane materials and primary particles
 MATERIAL = ("Pb", "Fe", "W", "Polyethylene")
-MATERIAL_ENUM = Enum("Pb", "Fe", "W", "Polyethylene", "")
+MATERIAL_ENUM = Enum("Pb", "Fe", "W", "Polyethylene", "0")
 PARTICLE = ("gamma", "electron", "muon", "neutron", "proton")
 PARTICLE_ENUM = Enum("gamma", "electron", "muon", "neutron", "proton")
 
@@ -303,38 +304,29 @@ class Database:
                     "abs_thick": 0 if a_t == "null" else float(a_t)
                 })
 
+            fk_p_list = self.plane_insert(plane_values, return_all=False)
+
+            # Get z coordinates and configuration ids of detection modules
+            config_values = {
+                "fk_p1": fk_p_list[0],
+                "fk_p2": fk_p_list[1],
+                "fk_p3": fk_p_list[2],
+                "fk_p4": fk_p_list[3],
+                "z_p1": float(active_plane_data[0]),
+                "z_p2": float(active_plane_data[1]),
+                "z_p3": float(active_plane_data[2]),
+                "z_p4": float(active_plane_data[3])
+            }
+
+            config_id, = self.insert_config(config_values, return_all=False)
+            if not isinstance(config_id, int):
+                raise TypeError("ID has unexpected type")
+
             with self.engine.connect() as conn:
-
-                # Insert rows into plane and save plane ids
-                plane_stmt = insert(self.plane).values(plane_values)
-                plane_stmt = plane_stmt.on_duplicate_key_update(
-                    size_x=plane_stmt.inserted.size_x
-                ).returning(self.plane.c.id)
-                fk_p_list = [fk_p for fk_p in conn.scalars(plane_stmt)]
-
-                # Get z coordinates and configuration ids of detection modules
-                config_values = {
-                    "fk_p1": fk_p_list[0],
-                    "fk_p2": fk_p_list[1],
-                    "fk_p3": fk_p_list[2],
-                    "fk_p4": fk_p_list[3],
-                    "z_p1": float(active_plane_data[0]),
-                    "z_p2": float(active_plane_data[1]),
-                    "z_p3": float(active_plane_data[2]),
-                    "z_p4": float(active_plane_data[3])
-                }
-
-                # Insert row into config table and save id
-                stmt = insert(self.config).values(config_values)
-                stmt = stmt.on_duplicate_key_update(z_p1=stmt.inserted.z_p1)
-                stmt = stmt.returning(self.config.c.id)
-                config_id, = conn.scalars(stmt)
 
                 # Get the id of the last event in the database
                 _event_id, = conn.scalars(select(func.max(self.event.c.id)))
                 event_id = _event_id if _event_id is not None else 0
-
-                conn.commit()
 
             # Insert events and values
             event_list: list[dict[str, Union[int, float, str, None]]] = []
@@ -373,3 +365,79 @@ class Database:
                 conn.commit()
 
         return None
+
+    def insert_config(self, values, return_all: bool = True):
+        """
+        Insert data into config table and handle id count when uniqueness
+        constraints are violated
+
+        :param values: Values to insert
+        :param return_all: Whether to return all the columns of the inserted
+        rows (True) or just their ids (False)
+        :return: List of inserted rows or list of IDs of inserted rows
+        """
+
+        stmt = insert(self.config).values(values)
+        stmt = stmt.on_duplicate_key_update(z_p1=stmt.inserted.z_p1)
+        stmt = stmt.returning(self.config)
+
+        n_values = 1 if isinstance(values, dict) else len(values)
+
+        with self.engine.connect() as conn:
+
+            _id, = conn.scalars(select(func.max(self.config.c.id)))
+            id = _id if _id is not None else 0
+
+            if return_all:
+                result = conn.execute(stmt).fetchall()
+                id_count = max([row[0] for row in result])
+            else:
+                result = [row[0] for row in conn.execute(stmt)]
+                id_count = max(result)
+
+            if id_count != id + n_values:
+                conn.execute(
+                    text("alter table config auto_increment = :x"),
+                    {"x": id_count}
+                )
+            conn.commit()
+
+        return result
+
+    def plane_insert(self, values, return_all: bool = True):
+        """
+        Insert data into plane table and handle id count when uniqueness
+        constraints are violated
+
+        :param values: Values to insert
+        :param return_all: Whether to return all the columns of the inserted
+        rows (True) or just their ids (False)
+        :return: List of inserted rows or list of IDs of inserted rows
+        """
+
+        stmt = insert(self.plane).values(values)
+        stmt = stmt.on_duplicate_key_update(size_x=stmt.inserted.size_x)
+        stmt = stmt.returning(self.plane)
+
+        n_values = 1 if isinstance(values, dict) else len(values)
+
+        with self.engine.connect() as conn:
+
+            _id, = conn.scalars(select(func.max(self.plane.c.id)))
+            id = _id if _id is not None else 0
+
+            if return_all:
+                result = conn.execute(stmt).fetchall()
+                id_count = max([row[0] for row in result])
+            else:
+                result = [row[0] for row in conn.execute(stmt)]
+                id_count = max(result)
+
+            if id_count != id + n_values:
+                conn.execute(
+                    text("alter table plane auto_increment = :x;"),
+                    {"x": id_count}
+                )
+            conn.commit()
+
+        return result
