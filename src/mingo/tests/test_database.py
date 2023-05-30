@@ -5,7 +5,8 @@ from pathlib import Path
 from sqlalchemy import Table, MetaData, select
 from sqlalchemy.dialects.mysql import insert
 from mingo.tests.mock_data import (
-    make_mock_source, make_mock_database, MOCK_SOURCE_DATA, get_tmp
+    make_mock_source, make_mock_database, MOCK_SOURCE_DATA, get_tmp,
+    make_sources, make_database, make_mock_mingo
 )
 import time
 
@@ -19,29 +20,29 @@ EXPECTED_EVENT = (1, 1, "electron", 800, 0, 0, 24)
 EXPECTED_HIT = (24, 1, 2, 23.83, 3.95, 100, 0.3809)
 
 
-def make_sources(
-        name_list: Union[str, Iterable[str]],
-        data_list: Union[str, Iterable[str]]
-):
-    """
-    Create temporary source files
+# def make_sources(
+#         name_list: Union[str, Iterable[str]],
+#         data_list: Union[str, Iterable[str]]
+# ):
+#     """
+#     Create temporary source files
 
-    :param name: File's names with extension
-    :param data: File's content
-    """
+#     :param name: File's names with extension
+#     :param data: File's content
+#     """
 
-    tmp = get_tmp()
-    if isinstance(name_list, str) and isinstance(data_list, str):
-        name_list = [name_list]
-        data_list = [data_list]
-    sources = [Path(tmp, name) for name in name_list]
-    try:
-        for source, data in zip(sources, data_list):
-            source.write_text(data)
-            yield source
-    finally:
-        for source in sources:
-            source.unlink()
+#     tmp = get_tmp()
+#     if isinstance(name_list, str) and isinstance(data_list, str):
+#         name_list = [name_list]
+#         data_list = [data_list]
+#     sources = [Path(tmp, name) for name in name_list]
+#     try:
+#         for source, data in zip(sources, data_list):
+#             source.write_text(data)
+#             yield source
+#     finally:
+#         for source in sources:
+#             source.unlink()
 
 
 @pytest.mark.parametrize(
@@ -71,12 +72,13 @@ def test_create_engine(
     return None
 
 
-def test_create_database(make_mock_database: Database) -> None:
+def test_create_database() -> None:
     """
     Ensure that an unexisting database is properly created
     """
 
-    db = make_mock_database
+    dbgen = make_database()
+    db = next(dbgen)
 
     # MetaData object exists and all tables are present
     assert isinstance(db.meta, MetaData)
@@ -98,12 +100,14 @@ def test_create_database(make_mock_database: Database) -> None:
     return None
 
 
-def test_load_database(make_mock_database: Database) -> None:
+def test_load_database() -> None:
     """
     Ensure that an existing database is properly loaded
     """
 
-    mock_db = make_mock_database
+    mock_dbgen = make_database()
+    mock_db = next(mock_dbgen)
+
     db = Database(mock_db.engine.url.database, True)
 
     # MetaData object exists and all tables are present
@@ -126,7 +130,7 @@ def test_load_database(make_mock_database: Database) -> None:
     return None
 
 
-def test_fill_database(make_mock_database) -> None:
+def test_fill_database() -> None:
     """
     Ensure that the database is properly filled and data is not corrupted
     """
@@ -134,8 +138,8 @@ def test_fill_database(make_mock_database) -> None:
     _source = make_sources("10-16-800.txt", MOCK_SOURCE_DATA["10-16-800"])
     source = next(_source)
 
-    db = make_mock_database
-    db.fill(source)
+    dbgen = make_database(source)
+    db = next(dbgen)
 
     with db.engine.connect() as conn:
 
@@ -145,8 +149,9 @@ def test_fill_database(make_mock_database) -> None:
 
         # Check data in plane table
         planes_data = conn.execute(select(db.plane))
-        for row, expected_row in zip(planes_data, EXPECTED_PLANE):
-            assert row == expected_row
+
+        for idx, result in enumerate(planes_data):
+            assert EXPECTED_PLANE[idx] == result
 
         # Check data in event table
         event_data, = conn.execute(select(db.event))
@@ -160,9 +165,10 @@ def test_fill_database(make_mock_database) -> None:
     return None
 
 
-def test_plane_uniqueness(make_mock_database: Database) -> None:
+def test_plane_uniqueness() -> None:
 
-    db = make_mock_database
+    dbgen = make_database()
+    db = next(dbgen)
 
     planes = [
         (None, 0, 0, 0, 0, "0", 0),
@@ -200,9 +206,10 @@ def test_plane_uniqueness(make_mock_database: Database) -> None:
     return None
 
 
-def test_config_uniqueness(make_mock_database: Database) -> None:
+def test_config_uniqueness() -> None:
 
-    db = make_mock_database
+    dbgen = make_database()
+    db = next(dbgen)
 
     planes = [(None, 0, 0, 0, 0, "0", 0), (None, 1, 0, 0, 0, "0", 0)]
     db.insert_plane(planes)
@@ -243,3 +250,13 @@ def test_config_uniqueness(make_mock_database: Database) -> None:
     assert fifth == expected_result[4]
 
     return None
+
+
+def test_mingo():
+
+    dbgen = make_mock_mingo()
+    db = next(dbgen)
+
+    id = db.get_plane_id(999, 999, 22, 0, "0", 0)
+
+    assert id == 1

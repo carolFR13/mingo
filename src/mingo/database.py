@@ -44,6 +44,8 @@ class Database:
     :param host: Name of the host
     :param port: Port number
     :param database: Name of the database
+    :param ask_to_create: Whether to ask for permission to create database
+    if it is not found
     :return None:
     """
 
@@ -57,6 +59,7 @@ class Database:
         password: Union[str, None] = None,
         host: Union[str, None] = None,
         port: Union[int, None] = None,
+        ask_to_create: bool = True
     ) -> None:
 
         # Create database engine
@@ -90,10 +93,15 @@ class Database:
             self.event = self.autoload("event", EVENT_COLS)
             self.hit = self.autoload("hit", HIT_COLS)
         else:
-            do: str = input(
-                f"Database '{url.database}' not found. "
-                "Do you want to create it? (y/n): "
-            )
+
+            if ask_to_create:
+                do: str = input(
+                    f"Database '{url.database}' not found. "
+                    "Do you want to create it? (y/n): "
+                )
+            else:
+                do = "y"
+
             if do == "y":
                 print(f"Creating database {url.database}")
                 self.create()
@@ -441,3 +449,83 @@ class Database:
             conn.commit()
 
         return result
+
+    def get_plane_id(self, size_x: float, size_y: float, size_z: float,
+                     abs_z: float, abs_mat: str, abs_thick: float) -> int:
+        """
+        Get the id of the plane matching a given configuration
+
+        Raises ValueError if given configuration is not found
+
+        :param size_x: X dimension of active plane [mm]
+        :param size_y: Y dimension of active plane [mm]
+        :param size_z: Z dimension of active plane [mm]
+        :param abs_z: Z coordinate of absorption plane (0 if null) [mm]
+        :param abs_mat: Material of absorption plane ('0' if null) [ ]
+        :param abs_thick: Thickness of absorption plane (0 if null) [mm]
+        :return: ID of plane matching given configuration
+        """
+
+        err_msg = "not enough values to unpack (expected 1, got 0)"
+
+        with self.engine.connect() as conn:
+
+            try:
+                id, = conn.scalars(
+                    select(self.plane.c.id).where(
+                        self.plane.c.size_x == size_x,
+                        self.plane.c.size_y == size_y,
+                        self.plane.c.size_z == size_z,
+                        self.plane.c.abs_z == abs_z,
+                        self.plane.c.abs_mat == abs_mat,
+                        self.plane.c.abs_thick == abs_thick
+                    )
+                )
+                if isinstance(id, int):
+                    return id
+                else:
+                    raise TypeError("Unexpected type for plane id")
+            except ValueError as err:
+                if err.args[0] == err_msg:
+                    raise ValueError("Plane configuration not found")
+                else:
+                    raise err
+
+    def get_config_id(self, ids: Sequence[int], zs: Sequence[float]) -> int:
+        """
+        Get the id of the detector matching a given configuration
+
+        Raises ValueError if given configuration is not found
+
+        :param ids: The ids of the four detection modules
+        :param zs: The Z coordinates of the active planes
+        :return: ID of detector matching given configuration
+        """
+
+        err_msg = "not enough values to unpack (expected 1, got 0)"
+
+        with self.engine.connect() as conn:
+
+            try:
+                id, = conn.scalars(
+                    select(self.config.c.id).where(
+                        self.config.c.fk_p1 == ids[0],
+                        self.config.c.fk_p2 == ids[1],
+                        self.config.c.fk_p3 == ids[2],
+                        self.config.c.fk_p4 == ids[3],
+                        self.config.c.z_p1 == zs[0],
+                        self.config.c.z_p2 == zs[1],
+                        self.config.c.z_p3 == zs[2],
+                        self.config.c.z_p4 == zs[3]
+                    )
+                )
+                if isinstance(id, int):
+                    return id
+                else:
+                    raise TypeError("Unexpected type for config id")
+
+            except ValueError as err:
+                if err.args[0] == err_msg:
+                    raise ValueError("Detector configuration not found")
+                else:
+                    raise err

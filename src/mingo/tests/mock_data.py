@@ -3,6 +3,7 @@ from tempfile import gettempdir
 from pathlib import Path
 import pytest
 from mingo import Database
+from typing import Union, Iterable
 
 # DATA FOR MOCK SOURCE FILES
 
@@ -366,6 +367,65 @@ def get_tmp() -> str:
         return "/tmp"
     else:
         return gettempdir()
+
+
+def make_sources(
+        name_list: Union[str, Iterable[str]],
+        data_list: Union[str, Iterable[str]]
+):
+    """
+    Create temporary source files
+
+    :param name: File's names with extension
+    :param data: File's content
+    """
+
+    tmp = get_tmp()
+    if isinstance(name_list, str) and isinstance(data_list, str):
+        name_list = [name_list]
+        data_list = [data_list]
+    sources = [Path(tmp, name) for name in name_list]
+    try:
+        for source, data in zip(sources, data_list):
+            source.write_text(data)
+            yield source
+    finally:
+        for source in sources:
+            source.unlink()
+
+
+def make_database(sources: Union[None, Path, Iterable[Path]] = None):
+    """
+    Create temporary database for testing
+    """
+
+    db = Database("mock_database", ask_to_create=False)
+    try:
+        if sources is None:
+            yield db
+        else:
+            if isinstance(sources, Path):
+                sources = [sources]
+            db.batch_fill(sources)
+            yield db
+    finally:
+        db.drop()
+
+
+def make_mock_mingo():
+
+    db = Database("mock_database", ask_to_create=False)
+
+    names = [key for key in MOCK_SOURCE_DATA.keys()]
+    data_list = [MOCK_SOURCE_DATA[key] for key in names]
+
+    try:
+        sourcegen = make_sources(names, data_list)
+        for source in sourcegen:
+            db.fill(source)
+        yield db
+    finally:
+        db.drop()
 
 
 @pytest.fixture()
