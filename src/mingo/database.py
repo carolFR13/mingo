@@ -304,7 +304,7 @@ class Database:
                     "abs_thick": 0 if a_t == "null" else float(a_t)
                 })
 
-            fk_p_list = self.plane_insert(plane_values, return_all=False)
+            fk_p_list = self.insert_plane(plane_values, return_all=False)
 
             # Get z coordinates and configuration ids of detection modules
             config_values = {
@@ -404,7 +404,7 @@ class Database:
 
         return result
 
-    def plane_insert(self, values, return_all: bool = True):
+    def insert_plane(self, values, return_all: bool = True):
         """
         Insert data into plane table and handle id count when uniqueness
         constraints are violated

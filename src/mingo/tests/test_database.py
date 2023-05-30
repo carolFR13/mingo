@@ -182,16 +182,16 @@ def test_plane_uniqueness(make_mock_database: Database) -> None:
     ]
 
     # Test single inserts: u(nique) + d(uplicate) + u
-    first, = db.plane_insert(planes[0])
-    second, = db.plane_insert(planes[0])
-    third, = db.plane_insert(planes[1])
+    first, = db.insert_plane(planes[0])
+    second, = db.insert_plane(planes[0])
+    third, = db.insert_plane(planes[1])
     assert first == expected_plane_data[0]
     assert second == first
     assert third == expected_plane_data[1]
 
     # Test batch insert: [u, d, u] + u
-    fourth = db.plane_insert([planes[2], planes[2], planes[3]])
-    fifth, = db.plane_insert(planes[4])
+    fourth = db.insert_plane([planes[2], planes[2], planes[3]])
+    fifth, = db.insert_plane(planes[4])
     assert fourth[0] == expected_plane_data[2]
     assert fourth[1] == expected_plane_data[2]
     assert fourth[2] == expected_plane_data[3]
@@ -205,7 +205,7 @@ def test_config_uniqueness(make_mock_database: Database) -> None:
     db = make_mock_database
 
     planes = [(None, 0, 0, 0, 0, "0", 0), (None, 1, 0, 0, 0, "0", 0)]
-    db.plane_insert(planes)
+    db.insert_plane(planes)
 
     configs = [
         (None, 1, 1, 1, 1, 0, 0, 0, 0),
