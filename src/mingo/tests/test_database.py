@@ -6,9 +6,8 @@ from sqlalchemy import Table, MetaData, select
 from sqlalchemy.dialects.mysql import insert
 from mingo.tests.mock_data import (
     make_mock_source, make_mock_database, MOCK_SOURCE_DATA, get_tmp,
-    make_sources, make_database, make_mock_mingo
+    make_sources, make_mock_mingo
 )
-import time
 
 EXPECTED_CONFIG = (1, 1, 2, 1, 3, 0, 100, 200, 400)
 EXPECTED_PLANE = [
@@ -18,31 +17,6 @@ EXPECTED_PLANE = [
 ]
 EXPECTED_EVENT = (1, 1, "electron", 800, 0, 0, 24)
 EXPECTED_HIT = (24, 1, 2, 23.83, 3.95, 100, 0.3809)
-
-
-# def make_sources(
-#         name_list: Union[str, Iterable[str]],
-#         data_list: Union[str, Iterable[str]]
-# ):
-#     """
-#     Create temporary source files
-
-#     :param name: File's names with extension
-#     :param data: File's content
-#     """
-
-#     tmp = get_tmp()
-#     if isinstance(name_list, str) and isinstance(data_list, str):
-#         name_list = [name_list]
-#         data_list = [data_list]
-#     sources = [Path(tmp, name) for name in name_list]
-#     try:
-#         for source, data in zip(sources, data_list):
-#             source.write_text(data)
-#             yield source
-#     finally:
-#         for source in sources:
-#             source.unlink()
 
 
 @pytest.mark.parametrize(
@@ -72,13 +46,12 @@ def test_create_engine(
     return None
 
 
-def test_create_database() -> None:
+def test_create_database(make_mock_database: Database) -> None:
     """
     Ensure that an unexisting database is properly created
     """
 
-    dbgen = make_database()
-    db = next(dbgen)
+    db = make_mock_database
 
     # MetaData object exists and all tables are present
     assert isinstance(db.meta, MetaData)
@@ -100,13 +73,12 @@ def test_create_database() -> None:
     return None
 
 
-def test_load_database() -> None:
+def test_load_database(make_mock_database: Database) -> None:
     """
     Ensure that an existing database is properly loaded
     """
 
-    mock_dbgen = make_database()
-    mock_db = next(mock_dbgen)
+    mock_db = make_mock_database
 
     db = Database(mock_db.engine.url.database, True)
 
@@ -130,7 +102,7 @@ def test_load_database() -> None:
     return None
 
 
-def test_fill_database() -> None:
+def test_fill_database(make_mock_database: Database) -> None:
     """
     Ensure that the database is properly filled and data is not corrupted
     """
@@ -138,37 +110,131 @@ def test_fill_database() -> None:
     _source = make_sources("10-16-800.txt", MOCK_SOURCE_DATA["10-16-800"])
     source = next(_source)
 
-    dbgen = make_database(source)
-    db = next(dbgen)
+    db = make_mock_database
+    db.fill(source)
 
     with db.engine.connect() as conn:
 
         # Check data in config table
         config_data, = conn.execute(select(db.config))
         assert config_data == EXPECTED_CONFIG
+        assert isinstance(config_data[0], int)
+        assert isinstance(config_data[1], int)
+        assert isinstance(config_data[2], int)
+        assert isinstance(config_data[3], int)
+        assert isinstance(config_data[4], int)
+        assert isinstance(config_data[5], float)
+        assert isinstance(config_data[6], float)
+        assert isinstance(config_data[7], float)
+        assert isinstance(config_data[8], float)
 
         # Check data in plane table
         planes_data = conn.execute(select(db.plane))
 
         for idx, result in enumerate(planes_data):
             assert EXPECTED_PLANE[idx] == result
+            assert isinstance(result[0], int)
+            assert isinstance(result[1], float)
+            assert isinstance(result[2], float)
+            assert isinstance(result[3], float)
+            assert isinstance(result[4], float)
+            assert isinstance(result[5], str)
+            assert isinstance(result[6], float)
 
         # Check data in event table
         event_data, = conn.execute(select(db.event))
         assert event_data == EXPECTED_EVENT
+        assert isinstance(event_data[0], int)
+        assert isinstance(event_data[1], int)
+        assert isinstance(event_data[2], str)
+        assert isinstance(event_data[3], float)
+        assert isinstance(event_data[4], float)
+        assert isinstance(event_data[5], float)
+        assert isinstance(event_data[6], int)
 
         # Check data in hit table
         hit_data = list(conn.execute(select(db.hit)))
         assert len(hit_data) == EXPECTED_EVENT[-1]
         assert hit_data[-1] == EXPECTED_HIT
+        assert isinstance(hit_data[-1][0], int)
+        assert isinstance(hit_data[-1][1], int)
+        assert isinstance(hit_data[-1][2], int)
+        assert isinstance(hit_data[-1][3], float)
+        assert isinstance(hit_data[-1][4], float)
+        assert isinstance(hit_data[-1][5], float)
+        assert isinstance(hit_data[-1][6], float)
 
     return None
 
 
-def test_plane_uniqueness() -> None:
+def test_fill_existing_database(make_mock_database: Database) -> None:
+    """
+    Ensure that a filled database is properly loaded
+    """
+    _source = make_sources("mock_source.txt", MOCK_SOURCE_DATA["10-16-800"])
+    source = next(_source)
 
-    dbgen = make_database()
-    db = next(dbgen)
+    mock_db = make_mock_database
+    mock_db.fill(source)
+    db = Database(mock_db.engine.url.database)
+
+    with db.engine.connect() as conn:
+
+        # Check data in config table
+        config_data, = conn.execute(select(db.config))
+        assert config_data == EXPECTED_CONFIG
+        assert isinstance(config_data[0], int)
+        assert isinstance(config_data[1], int)
+        assert isinstance(config_data[2], int)
+        assert isinstance(config_data[3], int)
+        assert isinstance(config_data[4], int)
+        assert isinstance(config_data[5], float)
+        assert isinstance(config_data[6], float)
+        assert isinstance(config_data[7], float)
+        assert isinstance(config_data[8], float)
+
+        # Check data in plane table
+        planes_data = conn.execute(select(db.plane))
+
+        for idx, result in enumerate(planes_data):
+            assert EXPECTED_PLANE[idx] == result
+            assert isinstance(result[0], int)
+            assert isinstance(result[1], float)
+            assert isinstance(result[2], float)
+            assert isinstance(result[3], float)
+            assert isinstance(result[4], float)
+            assert isinstance(result[5], str)
+            assert isinstance(result[6], float)
+
+        # Check data in event table
+        event_data, = conn.execute(select(db.event))
+        assert event_data == EXPECTED_EVENT
+        assert isinstance(event_data[0], int)
+        assert isinstance(event_data[1], int)
+        assert isinstance(event_data[2], str)
+        assert isinstance(event_data[3], float)
+        assert isinstance(event_data[4], float)
+        assert isinstance(event_data[5], float)
+        assert isinstance(event_data[6], int)
+
+        # Check data in hit table
+        hit_data = list(conn.execute(select(db.hit)))
+        assert len(hit_data) == EXPECTED_EVENT[-1]
+        assert hit_data[-1] == EXPECTED_HIT
+        assert isinstance(hit_data[-1][0], int)
+        assert isinstance(hit_data[-1][1], int)
+        assert isinstance(hit_data[-1][2], int)
+        assert isinstance(hit_data[-1][3], float)
+        assert isinstance(hit_data[-1][4], float)
+        assert isinstance(hit_data[-1][5], float)
+        assert isinstance(hit_data[-1][6], float)
+
+    return None
+
+
+def test_plane_uniqueness(make_mock_database: Database) -> None:
+
+    db = make_mock_database
 
     planes = [
         (None, 0, 0, 0, 0, "0", 0),
@@ -206,10 +272,9 @@ def test_plane_uniqueness() -> None:
     return None
 
 
-def test_config_uniqueness() -> None:
+def test_config_uniqueness(make_mock_database: Database) -> None:
 
-    dbgen = make_database()
-    db = next(dbgen)
+    db = make_mock_database
 
     planes = [(None, 0, 0, 0, 0, "0", 0), (None, 1, 0, 0, 0, "0", 0)]
     db.insert_plane(planes)

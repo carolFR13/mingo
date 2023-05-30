@@ -1,4 +1,4 @@
-from typing import Union, Iterable, Any, Sequence
+from typing import Union, Iterable, Sequence
 from pathlib import Path
 from sqlalchemy import (
     URL, create_engine, MetaData, Table, Column, ForeignKey, Integer, Double,
@@ -8,16 +8,6 @@ from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
 
-
-# Expected columns for each table of the database
-CONFIG_COLS = [
-    "id", "fk_p1", "fk_p2", "fk_p3", "fk_p4", "z_p1", "z_p2", "z_p3", "z_p4"
-]
-PLANE_COLS = [
-    "id", "size_x", "size_y", "size_z", "abs_z", "abs_mat", "abs_thick"
-]
-EVENT_COLS = ["id", "fk_config", "particle", "e_0", "theta", "phi", "n_hits"]
-HIT_COLS = ["id", "fk_event", "plane", "x", "y", "z", "t"]
 
 # Expected extension of the header section of source files
 HEADER_LINES = 45
@@ -87,13 +77,8 @@ class Database:
 
         # Load or create database
         if sqlutils.database_exists(url):
-            self.meta = MetaData()
-            self.config = self.autoload("config", CONFIG_COLS)
-            self.plane = self.autoload("plane", PLANE_COLS)
-            self.event = self.autoload("event", EVENT_COLS)
-            self.hit = self.autoload("hit", HIT_COLS)
+            self.make_meta(create=False)
         else:
-
             if ask_to_create:
                 do: str = input(
                     f"Database '{url.database}' not found. "
@@ -101,41 +86,25 @@ class Database:
                 )
             else:
                 do = "y"
-
             if do == "y":
                 print(f"Creating database {url.database}")
-                self.create()
+                self.make_meta()
             else:
                 print("End execution")
                 exit(0)
 
         return None
 
-    def autoload(self, table: str, expected_cols: list[str]) -> Table:
+    def make_meta(self, create: bool = True) -> None:
         """
-        Load table from existing database and check its columns
+        Create MetaData and Table objects for database and, if desired,
+        create database with mingo schema
 
-        :param table: Name of the table
-        :param expected_cols: List of expected columns
-        :return Table: SQLAlchemy's core table object
-        """
-
-        output = Table(table, self.meta, autoload_with=self.engine)
-
-        if [c.name for c in output.columns] == expected_cols:
-            return output
-        else:
-            raise FormatError(
-                f"Unexpected columns in table '{table}' of "
-                f"'{self.engine.url.database}' database"
-            )
-
-    def create(self) -> None:
-        """
-        Create empty database and table objects
+        :param create: Whether to create a new database with mingo schema
         """
 
-        sqlutils.create_database(self.engine.url)
+        if create:
+            sqlutils.create_database(self.engine.url)
         assert sqlutils.database_exists(self.engine.url)
 
         self.meta = MetaData()
@@ -194,11 +163,12 @@ class Database:
             Column("t", Double, nullable=True)
         )
 
-        print(
-            "Creating tables: detector, plane, event and hit "
-            f"in {self.engine.url.database}"
-        )
-        self.meta.create_all(self.engine, checkfirst=True)
+        if create:
+            print(
+                "Creating tables: detector, plane, event and hit "
+                f"in {self.engine.url.database}"
+            )
+            self.meta.create_all(self.engine, checkfirst=True)
 
         return None
 

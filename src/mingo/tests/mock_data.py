@@ -394,24 +394,6 @@ def make_sources(
             source.unlink()
 
 
-def make_database(sources: Union[None, Path, Iterable[Path]] = None):
-    """
-    Create temporary database for testing
-    """
-
-    db = Database("mock_database", ask_to_create=False)
-    try:
-        if sources is None:
-            yield db
-        else:
-            if isinstance(sources, Path):
-                sources = [sources]
-            db.batch_fill(sources)
-            yield db
-    finally:
-        db.drop()
-
-
 def make_mock_mingo():
 
     db = Database("mock_database", ask_to_create=False)
