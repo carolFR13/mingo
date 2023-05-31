@@ -5,6 +5,7 @@
 *cache*
 *.bkp
 *.dtmp
+*.ipynb_checkpoints
 
 # Python package
 *egg-info*
