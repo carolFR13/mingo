@@ -9,7 +9,7 @@ Mingo is a Python package with data analysis utilities for the MiniTrasgo projec
     ```shell
     git clone https://github.com/alfonsoSR/mingo.git
     ```
-    or select `Download zip` in the green `Code <>` button above.
+    or select `Download zip` in the green `<> Code` button above.
 
 2. **Install the package with `pip`**
 
