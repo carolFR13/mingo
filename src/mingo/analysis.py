@@ -3,7 +3,7 @@ from sqlalchemy import select, Double
 from sqlalchemy.sql import func
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Any
+from typing import Any, Iterable
 import pandas as pd
 
 
@@ -64,6 +64,9 @@ class Hit_distribution(Utils):
         rows, cols = self.subplot_organizer(len(self.dist_data.keys()))
         fig, axs = plt.subplots(ncols=cols, nrows=rows, figsize=(12, 6))
 
+        if not isinstance(axs, Iterable):
+            axs = [axs]
+
         for idx, (ax, key) in enumerate(zip(axs, self.dist_data)):
 
             for e, (hits, count) in self.dist_data[key].items():
@@ -89,6 +92,9 @@ class Hit_distribution(Utils):
 
         rows, cols = self.subplot_organizer(len(self.dist_data.keys()))
         fig, axs = plt.subplots(ncols=cols, nrows=rows, figsize=(12, 6))
+
+        if not isinstance(axs, Iterable):
+            axs = [axs]
 
         for idx, (ax, key) in enumerate(zip(axs, self.stats_data)):
             data = self.stats_data[key]
