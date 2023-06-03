@@ -9,7 +9,13 @@ import pandas as pd
 
 class Utils:
 
-    def __init__(self) -> None:
+    def __init__(self, db: Database) -> None:
+
+        self.db = db
+        self.config = self.db.config.c
+        self.plane = self.db.plane.c
+        self.event = self.db.event.c
+        self.hit = self.db.hit.c
 
         return None
 
@@ -40,19 +46,19 @@ class Utils:
 
 class Hit_distribution(Utils):
     """
-    Tools to analyze the relation between the energy of the primary cosmic
+    Analyze the relation between the energy of the primary cosmic
     ray and the number of hits per event
+
+    :param db: Database object
     """
 
     def __init__(self, db: Database) -> None:
 
-        self.db = db
+        super().__init__(db)
+
         self.dist_data: dict[str, dict[Any, Any]] = {}
         self.stats_data: dict[str, pd.DataFrame] = {}
-        self.config = self.db.config.c
-        self.plane = self.db.plane.c
-        self.event = self.db.event.c
-        self.hit = self.db.hit.c
+
         return None
 
     def plot_distribution(self):
@@ -198,5 +204,18 @@ class Hit_distribution(Utils):
 
         self.distribution(config_id, config_key)
         self.stats(config_id, config_key)
+
+        return None
+
+
+class Cascade_height(Utils):
+    """
+    Analyze the relation between the energy of the primary cosmic ray and the
+    average height of the cascade
+
+    :param db: Database object
+    """
+
+    def __init__(self, db: Database) -> None:
 
         return None
