@@ -203,7 +203,7 @@ class Hit_distribution(Base):
 
         # Configuration for stats plot
         self.stats_plot.x_label = "Number of hits per event"
-        self.stats_plot.y_lim = (125, 350)
+        self.stats_plot.y_lim = (10, 175)
         self.stats_plot.fig_title = (
             "Distribution of hits per event as a function of initial energy"
         )
@@ -421,7 +421,15 @@ class Plane_hits(Base):
 
         # Configuration for distribution plot
         self.dist_plot.x_lim = (None, 140)
-        self.dist_plot.y_lim = (None, 650)
+        match self.plane_number:
+            case 1:
+                self.dist_plot.y_lim = (None, None)
+            case 2:
+                self.dist_plot.y_lim = (None, 650)
+            case 3:
+                self.dist_plot.y_lim = (None, 700)
+            case 4:
+                self.dist_plot.y_lim = (None, 1000)
         self.dist_plot.fig_title = (
             "Number of hits per event as a function of initial energy: "
             f"Plane {self.plane_number}"
