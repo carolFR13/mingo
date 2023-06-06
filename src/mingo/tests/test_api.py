@@ -4,7 +4,8 @@ from mingo.tests.mock_data import (
 )
 from pathlib import Path
 import pytest
-from mingo import Hit_distribution
+from mingo import Hit_distribution, Cascade_height, Plane_hits, Scattering
+import pandas as pd
 
 
 @pytest.fixture(scope="module")
@@ -68,6 +69,8 @@ def test_hit_distribution(make_mingo) -> None:
 
     db = make_mingo
     hits = Hit_distribution(db)
+
+    # Test distribution method
     hits.distribution(1, "")
     result = hits.dist_data[""]
 
@@ -77,6 +80,98 @@ def test_hit_distribution(make_mingo) -> None:
     assert result[800].shape == (2, 1)
     assert result[1000].shape == (2, 1)
 
+    # Test stats method
+    hits.stats(1, "")
+    stats = hits.stats_data[""]
+
+    assert isinstance(stats, pd.DataFrame)
+    assert all(stats["e_0"] == [800, 1000])
+    assert all(stats["avg"] == [24, 42])
+    assert all(stats["median"] == [24, 42])
+    assert all([item is None for item in stats["std"]])
+
     return None
 
-# TODO: Add tests for the rest of Hit_distribution's methods
+
+def test_cascade_height(make_mingo) -> None:
+
+    db = make_mingo
+    height = Cascade_height(db)
+
+    # Test distribution method
+    height.distribution(1, "")
+    dist = height.dist_data[""]
+
+    assert list(dist.keys()) == [800, 1000]
+    assert dist[800].tolist() == [[200], [1]]
+    assert dist[1000].tolist() == [[265], [1]]
+    assert dist[800].shape == (2, 1)
+    assert dist[1000].shape == (2, 1)
+
+    # Test stats method
+    height.stats(1, "")
+    stats = height.stats_data[""]
+
+    assert isinstance(stats, pd.DataFrame)
+    assert all(stats["e_0"] == [800, 1000])
+    assert all(stats["avg"] == [202.06, 267])
+    assert all(stats["median"] == [202.06, 267])
+    assert all([item is None for item in stats["std"]])
+
+    return None
+
+
+def test_plane_hits(make_mingo) -> None:
+
+    db = make_mingo
+    hits = Plane_hits(db, 2)
+
+    # Test distribution method
+    hits.distribution(1, "")
+    dist = hits.dist_data[""]
+
+    assert list(dist.keys()) == [800, 1000]
+    assert dist[800].tolist() == [[7], [1]]
+    assert dist[1000].tolist() == [[10], [1]]
+    assert dist[800].shape == (2, 1)
+    assert dist[1000].shape == (2, 1)
+
+    # Test stats method
+    hits.stats(1, "")
+    stats = hits.stats_data[""]
+
+    assert isinstance(stats, pd.DataFrame)
+    assert all(stats["e_0"] == [800, 1000])
+    assert all(stats["avg"] == [7, 10])
+    assert all(stats["median"] == [7, 10])
+    assert all([item is None for item in stats["std"]])
+
+    return None
+
+
+def test_scatter(make_mingo) -> None:
+
+    db = make_mingo
+    scatter = Scattering(db, 2)
+
+    # Test distribution method
+    scatter.distribution(1, "")
+    dist = scatter.dist_data[""]
+
+    assert list(dist.keys()) == [800, 1000]
+    assert dist[800].tolist() == [[50], [1]]
+    assert dist[1000].tolist() == [[90], [1]]
+    assert dist[800].shape == (2, 1)
+    assert dist[1000].shape == (2, 1)
+
+    # Test stats method
+    scatter.stats(1, "")
+    stats = scatter.stats_data[""]
+
+    assert isinstance(stats, pd.DataFrame)
+    assert all(stats["e_0"] == [800, 1000])
+    assert all(stats["avg"] == [64.53, 95.21])
+    assert all(stats["median"] == [64.53, 95.21])
+    assert all([item is None for item in stats["std"]])
+
+    return None
