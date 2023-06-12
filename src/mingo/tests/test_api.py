@@ -4,7 +4,7 @@ from mingo.tests.mock_data import (
 )
 from pathlib import Path
 import pytest
-from mingo import Hit_distribution, Cascade_height, Plane_hits, Scattering
+from mingo import Hit_distribution, Shower_depth, Plane_hits, Scattering
 import pandas as pd
 
 
@@ -93,14 +93,14 @@ def test_hit_distribution(make_mingo) -> None:
     return None
 
 
-def test_cascade_height(make_mingo) -> None:
+def test_shower_depth(make_mingo) -> None:
 
     db = make_mingo
-    height = Cascade_height(db)
+    depth = Shower_depth(db)
 
     # Test distribution method
-    height.distribution(1, "")
-    dist = height.dist_data[""]
+    depth.distribution(1, "")
+    dist = depth.dist_data[""]
 
     assert list(dist.keys()) == [800, 1000]
     assert dist[800].tolist() == [[200], [1]]
@@ -109,8 +109,8 @@ def test_cascade_height(make_mingo) -> None:
     assert dist[1000].shape == (2, 1)
 
     # Test stats method
-    height.stats(1, "")
-    stats = height.stats_data[""]
+    depth.stats(1, "")
+    stats = depth.stats_data[""]
 
     assert isinstance(stats, pd.DataFrame)
     assert all(stats["e_0"] == [800, 1000])

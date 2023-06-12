@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
-from typing import Any, Sequence
+from typing import Any, Sequence, Literal
 import pandas as pd
 from dataclasses import dataclass
 
@@ -19,12 +19,16 @@ class Plot_config:
     vertical axis of stats plots
     :param x_lim: Left and right limits of the horizontal axes
     :param y_lim: Bottom and top limits of the vertical axes
+    :param x_scale: Scale of the horizontal axes
+    :param y_scale: Scale of the vertical axes
     :param fig_title: Figure title, common to all plots in a given figure
     """
 
     x_label: str = ""
     x_lim: tuple[float | None, float | None] = (None, None)
     y_lim: tuple[float | None, float | None] = (None, None)
+    x_scale: Literal["linear", "log", "symlog", "logit"] = "linear"
+    y_scale: Literal["linear", "log", "symlog", "logit"] = "linear"
     fig_title: str = ""
 
 
@@ -102,10 +106,14 @@ class Base:
             for e, (val, count) in self.dist_data[key].items():
                 ax.plot(val, count, label=f"{e:.0f} MeV")
 
-            ax.set_xlabel(self.dist_plot.x_label)
-            ax.set_title(key)
+            ax.set_xscale(self.dist_plot.x_scale)
+            ax.set_yscale(self.dist_plot.y_scale)
+
             ax.set_xlim(self.dist_plot.x_lim)
             ax.set_ylim(self.dist_plot.y_lim)
+
+            ax.set_title(key)
+            ax.set_xlabel(self.dist_plot.x_label)
             ax.legend()
 
         axs[0].set_ylabel("Number of events")
@@ -137,9 +145,13 @@ class Base:
             ax.scatter(
                 data["e_0"], data["median"], label="Median", c="orange"
             )
-            ax.set_xlabel("Initial energy [MeV]")
-            ax.set_title(key)
+
+            ax.set_xscale(self.stats_plot.x_scale)
+            ax.set_yscale(self.stats_plot.y_scale)
+            ax.set_xlim(self.stats_plot.x_lim)
             ax.set_ylim(self.stats_plot.y_lim)
+            ax.set_title(key)
+            ax.set_xlabel("Initial energy [MeV]")
             ax.legend(loc="upper left")
 
         axs[0].set_ylabel(self.stats_plot.x_label)
@@ -280,9 +292,9 @@ class Hit_distribution(Base):
         return None
 
 
-class Cascade_height(Base):
+class Shower_depth(Base):
     """
-    Relationship between the average height of the electromagnetic cascade
+    Relationship between the average depth of the electron shower
     produced by a primary cosmic ray and its initial energy
 
     :param db: Database object
@@ -293,18 +305,18 @@ class Cascade_height(Base):
         super().__init__(db)
 
         # Configuration for distribution plot
-        self.dist_plot.x_label = "Average cascade height [mm]"
+        self.dist_plot.x_label = "Average shower depth [mm]"
         self.dist_plot.x_lim = (None, 400)
         self.dist_plot.y_lim = (None, 850)
         self.dist_plot.fig_title = (
-            "Average cascade height as a function of initial energy"
+            "Average shower depth as a function of initial energy"
         )
 
         # Configuration for stats plot
-        self.stats_plot.x_label = "Average cascade height [mm]"
+        self.stats_plot.x_label = self.dist_plot.x_label
         self.stats_plot.y_lim = (125, 350)
         self.stats_plot.fig_title = (
-            "Average cascade height as a function of initial energy"
+            "Average shower depth as a function of initial energy"
         )
 
         return None
@@ -313,8 +325,8 @@ class Cascade_height(Base):
             self, config_id: int, config_key: str, R: float = 5
     ) -> None:
         """
-        Distribution of average cascade heights as a function of the initial
-        energy of the primary cosmic ray
+        Distribution of average shower depth values as a function of the
+        initial energy of the primary cosmic ray
 
         Results are saved as items of the dictionary self.dist_data with key
         'config_key'
@@ -362,8 +374,8 @@ class Cascade_height(Base):
 
     def stats(self, config_id: int, config_key: str) -> None:
         """
-        Statistical properties of the distribution of average cascade heights
-        as a function of the initial energy of the primary cosmic ray
+        Statistical properties of the distribution of average shower depth
+        values as a function of the initial energy of the primary cosmic ray
 
         Results are saved as items of the dictionary self.stats_data with
         key 'config_key'

@@ -1,14 +1,14 @@
 from .utils import reformat
 from .database import Database
 from .analysis import (
-    Hit_distribution, Cascade_height, Plane_hits, Scattering
+    Hit_distribution, Shower_depth, Plane_hits, Scattering
 )
 
 __all__ = [
     "reformat",
     "Database",
     "Hit_distribution",
-    "Cascade_height",
+    "Shower_depth",
     "Plane_hits",
     "Scattering"
 ]
