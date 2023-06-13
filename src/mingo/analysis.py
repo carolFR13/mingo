@@ -1,13 +1,13 @@
 from mingo import Database
-from sqlalchemy import select, Double
+from sqlalchemy import select, Double, Subquery, Select
 from sqlalchemy.sql import func
-import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from typing import Any, Sequence, Literal
-import pandas as pd
 from dataclasses import dataclass
+import pandas as pd
+import numpy as np
 
 
 @dataclass
@@ -29,7 +29,7 @@ class Plot_config:
 
 class Base:
     """
-    Base class for analysis' utilities
+    Base class for analysis utilities
 
     :param db: Database object
     """
@@ -52,13 +52,128 @@ class Base:
 
         return None
 
+    def distribution(self, id: int, label: str, **kwargs) -> None:
+        """
+        Distribution of given property as function of the initial energy
+        of the primary cosmic ray.
+
+        Specific behavior is defined by the _dist_tmp and _dist_stmt methods.
+
+        Results are saved to self.dist_data
+
+        :param id: ID of desired detector configuration
+        :param label: Title for associated plots
+        """
+
+        R = kwargs["R"] if "R" in kwargs else None
+        plane_num = kwargs["plane_num"] if "plane_num" in kwargs else None
+
+        self.dist_data[label] = {}
+
+        with self.db.engine.connect() as conn:
+
+            energies = conn.execute(
+                select(self.event.e_0)
+                .where(self.event.fk_config == id)
+                .distinct()
+                .order_by(self.event.e_0)
+            )
+
+            for energy, in energies:
+
+                tmp = self._dist_tmp(id, energy, plane_num, R)
+                stmt = self._dist_stmt(tmp, id, energy)
+
+                self.dist_data[label][energy] = np.array([
+                    [val, count] for val, count in conn.execute(stmt)
+                ]).swapaxes(0, 1)
+
+        return None
+
+    def _dist_tmp(self, id: int, energy: float,
+                  plane_num: int | None, R: float | None) -> None | Subquery:
+        """
+        Implementation of the distribution's subquery for each specific
+        property
+
+        :param id: ID of desired detector configuration
+        :param energy: Initial energy of primary cosmic ray
+        :param plane_num: Plane number (First is 1, last is 4)
+        :param R: Rounding factor
+        """
+
+        raise NotImplementedError
+
+    def _dist_stmt(self, tmp: None | Subquery,
+                   id: int, energy: float) -> Select[tuple[Any, int]]:
+        """
+        Implementation of the distribution's query for each specific property
+
+        :param tmp: Temporary table to be used by the query
+        :param id: ID of desired detector configuration
+        :param energy: Initial energy of primary cosmic ray
+        """
+
+        raise NotImplementedError
+
+    def stats(self, id: int, label: str, **kwargs) -> None:
+        """
+        Statistical descriptors of the distribution of a property as function
+        of the initial energy of the primary cosmic ray.
+
+        Specific behavior is defined by the _stats_tmp method.
+
+        Results are saved to self.stats_data.
+
+        :param id: ID of desired detector configuration
+        :param label: Title for associated plots
+        :param plane_num: Plane number
+        """
+
+        plane_num = kwargs["plane_num"] if "plane_num" in kwargs else None
+
+        tmp = self._stats_tmp(id, plane_num)
+
+        with self.db.engine.connect() as conn:
+
+            result = pd.DataFrame(
+                [
+                    [e_0, avg, median, std]
+                    for e_0, avg, median, std in conn.execute(
+                        select(
+                            tmp.c.e_0,
+                            func.avg(tmp.c.val, type_=Double),
+                            func.median(tmp.c.val).over(tmp.c.e_0),
+                            func.stddev_samp(tmp.c.val, type_=Double)
+                        )
+                        .group_by(tmp.c.e_0)
+                    )
+                ], columns=["e_0", "avg", "median", "std"]
+            )
+
+        result["avg / std"] = result["avg"] / result["std"]
+
+        self.stats_data[label] = result.round(2)
+
+        return None
+
+    def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
+        """
+        Implementation of stats' subquery for each specific property
+
+        :param id: ID of desired detector configuration
+        :param plane_num: Plane number
+        """
+
+        raise NotImplementedError
+
     def _make_figure(
             self,
             figsize: tuple[int, int] = (12, 6)
     ) -> tuple[Figure, Sequence[Axes]]:
         """
-        Create a subplot and divide it according to the number of available
-        configurations
+        Generate figure for distribution or stats plots with appropriate
+        number of subplots
 
         :param figsize: Figure dimensions in inches
         :return fig: Matplotlib figure with subplots
@@ -86,11 +201,11 @@ class Base:
 
     def plot_distribution(self) -> Figure:
         """
-        Create a set of distribution plots from the data in self.dist_data
+        Generate distribution plots from data in self.dist_data
 
-        Plot configuration is read from the self.dist_plot dataclass
+        Plot configuration is read from self.plot_config
 
-        :return fig: Matplotlib figure with distribution plots
+        :return fig: Figure with distribution plots
         """
 
         xlim: float = 0
@@ -123,12 +238,14 @@ class Base:
 
     def plot_stats(self) -> Figure:
         """
-        Plot the mean, standard deviation and median of a distribution as
-        function of the initial energy of the primary cosmic ray
+        Generate stats plots from data in self.stats_data.
 
-        Plot configuration is read from `self.plot_config`
+        Each plot includes the mean, median and standard deviation of a certain
+        property as function of the initial energy of the primary cosmic ray
 
-        :return fig: Figure with plots
+        Plot configuration is read from self.plot_config
+
+        :return fig: Figure with stats plots
         """
 
         xlim: float = 0
@@ -137,6 +254,7 @@ class Base:
         fig, axs = self._make_figure()
 
         for ax, key in zip(axs, self.stats_data):
+
             data = self.stats_data[key]
             ax.plot(data["e_0"], data["avg"], label="Average")
             ax.fill_between(
@@ -152,6 +270,7 @@ class Base:
             ax.set_title(key)
             ax.set_xlabel("Initial energy [MeV]")
             ax.legend()
+
             xlim = max(xlim, ax.get_xlim()[1])
             ylim = max(ylim, ax.get_ylim()[1])
 
@@ -166,7 +285,9 @@ class Base:
 
     def report_figure(self) -> Figure:
         """
-        Generate a figure with pairs of distribution plots and stats tables
+        Generate pairs of distribution plots and stats tables.
+
+        Data is read from self.dist_data and self.stats_data
 
         :return fig: Generated figure
         """
@@ -212,7 +333,6 @@ class Base:
 
         fig.suptitle(self.plot_config.title)
 
-        # fig.suptitle(self.report_config.title)
         for ax in fig.get_axes():
             if ax.axison:
                 ax.set_xlim((None, xlim))
@@ -220,44 +340,24 @@ class Base:
 
         return fig
 
-    def distribution(self, config_id: int, config_key: str) -> None:
-        """
-        Base method for distribution data retrievers
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        """
-
-        NotImplemented
-
-    def stats(self, config_id: int, config_key: str) -> None:
-        """
-        Base method for stats data retrievers
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        """
-
-        NotImplemented
-
-    def __call__(self, config_id: int, config_key: str) -> None:
+    def __call__(self, id: int, label: str) -> None:
         """
         Executes the distribution and stats methods in one call
 
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
+        :param id: ID of desired detector configuration
+        :param label: Title for associated plots
         """
 
-        self.distribution(config_id, config_key)
-        self.stats(config_id, config_key)
+        self.distribution(id, label)
+        self.stats(id, label)
 
         return None
 
 
 class Hit_distribution(Base):
     """
-    Relationship between the number of hits per event and the initial energy
-    of the primary cosmic ray
+    Number of hits per event as function of the initial energy of the primary
+    cosmic ray
 
     :param db: Database object
     """
@@ -276,80 +376,43 @@ class Hit_distribution(Base):
 
         return None
 
-    def stats(self, config_id: int, config_key: str) -> None:
-        """
-        Statistical properties of the distribution of hits per event as a
-        function of the initial energy of the primary cosmic ray
+    def stats(self, id: int, label: str, **kwargs) -> None:
+        return super().stats(id, label)
 
-        Results are saved as items of the dictionary self.stats_data with
-        key 'config_key'
+    def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-       """
-
-        stmt = select(
-            self.event.e_0,
-            func.avg(self.event.n_hits, type_=Double),
-            func.median(self.event.n_hits).over(self.event.e_0),
-            func.stddev_samp(self.event.n_hits, type_=Double)
-        )
-        stmt = stmt.where(self.event.fk_config == config_id)
-        stmt = stmt.group_by(self.event.e_0)
-
-        with self.db.engine.connect() as conn:
-
-            stats = pd.DataFrame(
-                [
-                    [e_0, avg, median, std]
-                    for e_0, avg, median, std in conn.execute(stmt)
-                ], columns=["e_0", "avg", "median", "std"]
+        return (
+            select(
+                self.event.e_0.label("e_0"),
+                self.event.n_hits.label("val")
             )
+            .where(self.event.fk_config == id)
+            .alias("tmp")
+        )
 
-        stats["avg / std"] = stats["avg"] / stats["std"]
+    def distribution(self, id: int, label: str, **kwargs) -> None:
+        return super().distribution(id, label)
 
-        self.stats_data[config_key] = stats.round(2)
-
-        return None
-
-    def distribution(self, config_id: int, config_key: str) -> None:
-        """
-        Distribution of hits per event as a function of the initial energy of
-        the primary cosmic ray
-
-        Results are saved as items of the dictionary self.dist_data with key
-        'config_key'
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        """
-        with self.db.engine.connect() as conn:
-
-            hits = {
-                energy: np.array([
-                    [hit, count] for hit, count in conn.execute(
-                        select(self.event.n_hits, func.count(self.event.e_0))
-                        .where(self.event.fk_config == config_id)
-                        .where(self.event.e_0 == energy)
-                        .group_by(self.event.n_hits)
-                    )
-                ]).swapaxes(0, 1) for energy, in conn.execute(
-                    select(self.event.e_0)
-                    .where(self.event.fk_config == config_id)
-                    .distinct()
-                    .order_by(self.event.e_0)
-                )
-            }
-
-        self.dist_data[config_key] = hits
+    def _dist_tmp(self, id: int, energy: float,
+                  plane_num: int | None, R: float | None) -> Subquery | None:
 
         return None
+
+    def _dist_stmt(self, tmp: Subquery | None,
+                   id: int, energy: float) -> Select[tuple[Any, int]]:
+
+        return (
+            select(self.event.n_hits, func.count(self.event.e_0))
+            .where(self.event.fk_config == id)
+            .where(self.event.e_0 == energy)
+            .group_by(self.event.n_hits)
+        )
 
 
 class Shower_depth(Base):
     """
-    Relationship between the average depth of the electron shower
-    produced by a primary cosmic ray and its initial energy
+    Average height of the electrons generated by a primary cosmic ray as
+    function of its initial energy
 
     :param db: Database object
     """
@@ -368,22 +431,13 @@ class Shower_depth(Base):
 
         return None
 
-    def distribution(
-            self, config_id: int, config_key: str, R: float = 5
-    ) -> None:
-        """
-        Distribution of average shower depth values as a function of the
-        initial energy of the primary cosmic ray
+    def distribution(self, id: int, label: str, **kwargs) -> None:
+        return super().distribution(id, label, R=5)
 
-        Results are saved as items of the dictionary self.dist_data with key
-        'config_key'
+    def _dist_tmp(self, id: int, energy: float,
+                  plane_num: int | None, R: float | None) -> Subquery | None:
 
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        :param R: Round factor
-        """
-
-        tmp = (
+        return (
             select(
                 self.event.e_0.label("e_0"),
                 (func.round(func.avg(self.hit.z) / R) * R).label("avg_z")
@@ -393,80 +447,48 @@ class Shower_depth(Base):
                     self.db.hit, self.event.id == self.hit.fk_event
                 )
             )
-            .where(self.event.fk_config == config_id)
+            .where(self.event.fk_config == id)
             .group_by(self.hit.fk_event)
             .alias("tmp")
         )
 
-        with self.db.engine.connect() as conn:
+    def _dist_stmt(self, tmp: Subquery | None,
+                   id: int, energy: float) -> Select[tuple[Any, int]]:
 
-            result = {
-                energy: np.array([
-                    [avg_z, count] for avg_z, count in conn.execute(
-                        select(tmp.c.avg_z, func.count(tmp.c.avg_z))
-                        .where(tmp.c.e_0 == energy)
-                        .group_by(tmp.c.avg_z)
-                    )
-                ]).swapaxes(0, 1) for energy, in conn.execute(
-                    select(self.event.e_0)
-                    .where(self.event.fk_config == config_id)
-                    .distinct()
-                    .order_by(self.event.e_0)
-                )
-            }
+        if tmp is None:
+            raise TypeError("Expected tmp of type Subquery, got None")
 
-        self.dist_data[config_key] = result
-
-        return None
-
-    def stats(self, config_id: int, config_key: str) -> None:
-        """
-        Statistical properties of the distribution of average shower depth
-        values as a function of the initial energy of the primary cosmic ray
-
-        Results are saved as items of the dictionary self.stats_data with
-        key 'config_key'
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-       """
-
-        stmt = (
-            select(self.hit.fk_event, func.avg(self.hit.z).label("avg_z"))
-            .group_by(self.hit.fk_event)
-            .alias("stmt")
+        return (
+            select(tmp.c.avg_z, func.count(tmp.c.avg_z))
+            .where(tmp.c.e_0 == energy)
+            .group_by(tmp.c.avg_z)
         )
 
-        with self.db.engine.connect() as conn:
+    def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
-            result = pd.DataFrame(
-                [
-                    [e_0, avg, median, std]
-                    for e_0, avg, median, std in conn.execute(
-                        select(
-                            self.event.e_0,
-                            func.avg(stmt.c.avg_z, type_=Double),
-                            func.median(stmt.c.avg_z).over(self.event.e_0),
-                            func.stddev_samp(stmt.c.avg_z, type_=Double)
-                        )
-                        .select_from(self.db.event.join(stmt))
-                        .where(self.event.fk_config == config_id)
-                        .group_by(self.event.e_0)
-                    )
-                ], columns=["e_0", "avg", "median", "std"]
+        return (
+            select(
+                self.event.e_0.label("e_0"),
+                func.avg(self.hit.z).label("val")
             )
+            .select_from(
+                self.db.event.join(
+                    self.db.hit, self.event.id == self.hit.fk_event
+                )
+            )
+            .where(self.event.fk_config == id)
+            .group_by(self.hit.fk_event)
+            .alias("tmp")
+        )
 
-        result["avg / std"] = result["avg"] / result["std"]
-
-        self.stats_data[config_key] = result.round(2)
-
-        return None
+    def stats(self, id: int, label: str, **kwargs) -> None:
+        return super().stats(id, label)
 
 
 class Plane_hits(Base):
     """
-    Relationship between the number of hits per event on a given plane and
-    the initial energy of the primary cosmic ray
+    Number of hits per event on a given plane as function of the initial
+    energy of the primary cosmic ray
 
     :param db: Database object
     :param plane: Plane number (First is 1 last is 4)
@@ -489,72 +511,45 @@ class Plane_hits(Base):
 
         return None
 
-    def distribution(self, config_id: int, config_key: str) -> None:
-        """
-        Distribution of hits per event on a given plane as a function of the
-        initial energy of the primary cosmic ray
+    def _dist_tmp(self, id: int, energy: float,
+                  plane_num: int | None, R: float | None) -> Subquery | None:
 
-        Results are saved as items of the dictionary self.dist_data with key
-        'config_key'
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        """
-
-        self.dist_data[config_key] = {}
-
-        with self.db.engine.connect() as conn:
-
-            energies = conn.execute(
-                select(self.event.e_0)
-                .where(self.event.fk_config == config_id)
-                .distinct()
-                .order_by(self.event.e_0)
-            )
-
-            for energy, in energies:
-
-                tmp = (
-                    select((func.count(self.hit.id)).label("hits"))
-                    .select_from(
-                        self.db.event.join(
-                            self.db.hit, self.event.id == self.hit.fk_event
-                        )
-                    )
-                    .where(
-                        self.event.fk_config == config_id,
-                        self.event.e_0 == energy,
-                        self.hit.plane == self.plane_number
-                    )
-                    .group_by(self.event.id)
-                    .alias("tmp")
+        return (
+            select((func.count(self.hit.id)).label("hits"))
+            .select_from(
+                self.db.event.join(
+                    self.db.hit, self.event.id == self.hit.fk_event
                 )
+            )
+            .where(
+                self.event.fk_config == id,
+                self.event.e_0 == energy,
+                self.hit.plane == plane_num
+            )
+            .group_by(self.event.id)
+            .alias("tmp")
+        )
 
-                self.dist_data[config_key][energy] = np.array([
-                    [val, count] for val, count in conn.execute(
-                        select(tmp.c.hits, func.count(tmp.c.hits))
-                        .group_by(tmp.c.hits)
-                    )
-                ]).swapaxes(0, 1)
+    def _dist_stmt(self, tmp: Subquery | None,
+                   id: int, energy: float) -> Select[tuple[Any, int]]:
 
-        return None
+        if tmp is None:
+            raise TypeError("Expected tmp of Subquery type, got None")
 
-    def stats(self, config_id: int, config_key: str) -> None:
-        """
-        Statistical properties of the number of hits per event on a given
-        plane as a function of the initial energy of the primary cosmic ray
+        return (
+            select(tmp.c.hits, func.count(tmp.c.hits))
+            .group_by(tmp.c.hits)
+        )
 
-        Results are saved as items of the dictionary self.stats_data with
-        key 'config_key'
+    def distribution(self, id: int, label: str, **kwargs) -> None:
+        return super().distribution(id, label, plane_num=self.plane_number)
 
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-       """
+    def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
-        tmp = (
+        return (
             select(
                 self.event.e_0.label("e_0"),
-                func.count(self.hit.id).label("hits")
+                func.count(self.hit.id).label("val")
             )
             .select_from(
                 self.db.event.join(
@@ -562,41 +557,21 @@ class Plane_hits(Base):
                 )
             )
             .where(
-                self.event.fk_config == config_id,
-                self.hit.plane == self.plane_number
+                self.event.fk_config == id,
+                self.hit.plane == plane_num
             )
-            .group_by(self.event.id)
+            .group_by(self.hit.fk_event)
+            .alias("tmp")
         )
 
-        with self.db.engine.connect() as conn:
-
-            result = pd.DataFrame(
-                [
-                    [e_0, avg, median, std]
-                    for e_0, avg, median, std in conn.execute(
-                        select(
-                            tmp.c.e_0,
-                            func.avg(tmp.c.hits, type_=Double),
-                            func.median(tmp.c.hits).over(tmp.c.e_0),
-                            func.stddev_samp(tmp.c.hits, type_=Double)
-                        )
-                        .group_by(tmp.c.e_0)
-                    )
-                ], columns=["e_0", "avg", "median", "std"]
-            )
-
-        result["avg / std"] = result["avg"] / result["std"]
-
-        self.stats_data[config_key] = result.round(2)
-
-        return None
+    def stats(self, id: int, label: str, **kwargs) -> None:
+        return super().stats(id, label, plane_num=self.plane_number)
 
 
 class Scattering(Base):
     """
-    Relationship between the average distance between detected particles and
-    the center of a given active plane and the initial energy of the primary
-    cosmic ray
+    Average distance between particle impacts and the center of a given plane
+    as function of the initial energy of the primary cosmic ray
 
     :param db: Database object
     :param plane: Plane number (First is 1, last is 4)
@@ -621,117 +596,73 @@ class Scattering(Base):
 
         return None
 
-    def distribution(
-            self, config_id: int, config_key: str, R: float = 0.1) -> None:
-        """
-        Distribution of the average distance to the center of the chosen
-        active plane as a function of the initial energy of the primary
-        cosmic ray
+    def _dist_tmp(self, id: int, energy: float,
+                  plane_num: int | None, R: float | None) -> Subquery | None:
 
-        Results are saved as items of the dictionary self.dist_data with key
-        'config_key'
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        :param R: Round factor
-        """
-        self.dist_data[config_key] = {}
-
-        with self.db.engine.connect() as conn:
-
-            energies = conn.execute(
-                select(self.event.e_0)
-                .where(self.event.fk_config == config_id)
-                .distinct()
-                .order_by(self.event.e_0)
-            )
-
-            for energy, in energies:
-
-                tmp = (
-                    select(
-                        self.event.id.label("id"),
-                        self.event.e_0.label("e_0"),
-                        (func.round(
-                            func.avg(
-                                func.sqrt(
-                                    self.hit.x * self.hit.x +
-                                    self.hit.y * self.hit.y
-                                )
-                            ) * R
-                        ) / R).label("avg_R")
-                    )
-                    .select_from(
-                        self.db.event.join(
-                            self.db.hit, self.event.id == self.hit.fk_event
-                        )
-                    )
-                    .where(
-                        self.event.fk_config == config_id,
-                        self.event.e_0 == energy,
-                        self.hit.plane == self.plane_number
-                    )
-                    .group_by(self.hit.fk_event)
-                    .alias("tmp")
-                )
-
-                self.dist_data[config_key][energy] = np.array([
-                    [avg, count] for avg, count in conn.execute(
-                        select(
-                            tmp.c.avg_R,
-                            func.count(tmp.c.avg_R).label("count")
-                        )
-                        .group_by(tmp.c.avg_R)
-                    )
-                ]).swapaxes(0, 1)
-
-        return None
-
-    def stats(self, config_id: int, config_key: str) -> None:
-        """
-        Statistical properties of the distribution of the average distance
-        to the center of the chosen active plane as a function of the
-        initial energy of the primary cosmic ray
-
-        Results are saved as items of the dictionary self.stats_data with key
-        'config_key'
-
-        :param config_id: ID of desired detector configuration
-        :param config_key: Title for associated plots
-        """
-
-        tmp = (
+        return (
             select(
-                self.hit.fk_event,
-                func.avg(func.sqrt(
-                    self.hit.x * self.hit.x + self.hit.y * self.hit.y
-                )).label("avg_R")
+                self.event.id.label("id"),
+                self.event.e_0.label("e_0"),
+                (func.round(
+                    func.avg(
+                        func.sqrt(
+                            self.hit.x * self.hit.x + self.hit.y * self.hit.y
+                        )
+                    ) * R
+                ) / R).label("avg_R")
+            )
+            .select_from(
+                self.db.event.join(
+                    self.db.hit, self.event.id == self.hit.fk_event
+                )
+            )
+            .where(
+                self.event.fk_config == id,
+                self.event.e_0 == energy,
+                self.hit.plane == plane_num
             )
             .group_by(self.hit.fk_event)
             .alias("tmp")
         )
 
-        with self.db.engine.connect() as conn:
+    def _dist_stmt(self, tmp: Subquery | None,
+                   id: int, energy: float) -> Select[tuple[Any, int]]:
 
-            result = pd.DataFrame(
-                [
-                    [e_0, avg, median, std]
-                    for e_0, avg, median, std in conn.execute(
-                        select(
-                            self.event.e_0,
-                            func.avg(tmp.c.avg_R, type_=Double),
-                            func.median(tmp.c.avg_R).over(self.event.e_0),
-                            func.stddev_samp(tmp.c.avg_R, type_=Double)
-                        )
-                        .select_from(self.db.event.join(tmp))
-                        .where(self.event.fk_config == config_id)
-                        .group_by(self.event.e_0)
+        if tmp is None:
+            raise TypeError("Expected tmp of type Subquery, got None")
+
+        return (
+            select(tmp.c.avg_R, func.count(tmp.c.avg_R))
+            .group_by(tmp.c.avg_R)
+        )
+
+    def distribution(self, id: int, label: str, **kwargs) -> None:
+        return super().distribution(id, label,
+                                    R=0.1, plane_num=self.plane_number)
+
+    def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
+
+        return (
+            select(
+                self.event.e_0.label("e_0"),
+                func.avg(
+                    func.sqrt(
+                        self.hit.x * self.hit.x + self.hit.y * self.hit.y
                     )
-                ], columns=["e_0", "avg", "median", "std"]
+                ).label("val")
             )
+            .select_from(
+                self.db.event.join(
+                    self.db.hit, self.event.id == self.hit.fk_event
+                )
+            )
+            .where(
+                self.event.fk_config == id,
+                self.hit.plane == plane_num
+            )
+            .group_by(self.hit.fk_event)
+            .alias("tmp")
+        )
 
-        result["avg / std"] = result["avg"] / result["std"]
-
-        self.stats_data[config_key] = result.round(2)
-
-        return None
+    def stats(self, id: int, label: str, **kwargs) -> None:
+        return super().stats(id, label, plane_num=self.plane_number)
