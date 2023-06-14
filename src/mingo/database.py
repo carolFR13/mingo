@@ -7,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
+from tqdm import tqdm as bar
 
 
 # Expected extension of the header section of source files
@@ -164,10 +165,6 @@ class Database:
         )
 
         if create:
-            print(
-                "Creating tables: detector, plane, event and hit "
-                f"in {self.engine.url.database}"
-            )
             self.meta.create_all(self.engine, checkfirst=True)
 
         return None
@@ -204,6 +201,7 @@ class Database:
                 f"Unexpected input type: {type(sources)}. "
                 f"Must be Path or Iterable[Path]."
             )
+        print(f"Filling {self.engine.url.database} with source files:")
         for source in _sources:
             if not source.is_file():
                 raise ValueError(f"{str(source)} is not a file!")
@@ -237,8 +235,6 @@ class Database:
             raise FileNotFoundError(
                 f"Database '{self.engine.url.database}' not found"
             )
-
-        print(f"Filling {self.engine.url.database} with {str(source_file)}")
 
         with open(source_file, "r") as source:
 
@@ -309,7 +305,13 @@ class Database:
             # Insert events and values
             event_list: list[dict[str, Union[int, float, str, None]]] = []
             hit_list: list[dict[str, Union[int, float, None]]] = []
-            for idx, line in enumerate(source.readlines()):
+            for idx, line in enumerate(
+                bar(
+                    source.readlines(),
+                    desc=source_file.parent.name + "/" + source_file.name,
+                    ascii=True
+                )
+            ):
                 data = line[:-1].split("\t")
                 match len(data):
                     case 8:
