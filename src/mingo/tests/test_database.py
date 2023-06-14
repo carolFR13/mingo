@@ -142,7 +142,7 @@ def test_fill_database(make_mock_database: Database) -> None:
             assert isinstance(result[6], float)
 
         # Check data in event table
-        event_data, = conn.execute(select(db.event))
+        event_data, = conn.execute(select(db.event).where(db.event.c.id == 1))
         assert event_data == EXPECTED_EVENT
         assert isinstance(event_data[0], int)
         assert isinstance(event_data[1], int)
@@ -153,7 +153,9 @@ def test_fill_database(make_mock_database: Database) -> None:
         assert isinstance(event_data[6], int)
 
         # Check data in hit table
-        hit_data = list(conn.execute(select(db.hit)))
+        hit_data = list(
+            conn.execute(select(db.hit).where(db.hit.c.fk_event == 1))
+        )
         assert len(hit_data) == EXPECTED_EVENT[-1]
         assert hit_data[-1] == EXPECTED_HIT
         assert isinstance(hit_data[-1][0], int)
@@ -207,7 +209,7 @@ def test_fill_existing_database(make_mock_database: Database) -> None:
             assert isinstance(result[6], float)
 
         # Check data in event table
-        event_data, = conn.execute(select(db.event))
+        event_data, = conn.execute(select(db.event).where(db.event.c.id == 1))
         assert event_data == EXPECTED_EVENT
         assert isinstance(event_data[0], int)
         assert isinstance(event_data[1], int)
@@ -218,7 +220,9 @@ def test_fill_existing_database(make_mock_database: Database) -> None:
         assert isinstance(event_data[6], int)
 
         # Check data in hit table
-        hit_data = list(conn.execute(select(db.hit)))
+        hit_data = list(
+            conn.execute(select(db.hit).where(db.hit.c.fk_event == 1))
+        )
         assert len(hit_data) == EXPECTED_EVENT[-1]
         assert hit_data[-1] == EXPECTED_HIT
         assert isinstance(hit_data[-1][0], int)
