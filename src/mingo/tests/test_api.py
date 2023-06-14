@@ -226,10 +226,10 @@ def test_scattering(make_database: Database) -> None:
     # Check distribution data
     assert list(d10.keys()) == [800, 1000]
     assert list(d16.keys()) == [800, 1000]
-    assert d10[800].tolist() == [[30, 53, 89, 102], [1, 1, 1, 1]]
-    assert d10[1000].tolist() == [[51, 70, 97, 142], [1, 1, 1, 1]]
-    assert d16[800].tolist() == [[34, 70, 118, 128], [1, 1, 1, 1]]
-    assert d16[1000].tolist() == [[25, 75, 99, 137], [1, 1, 1, 1]]
+    assert d10[800].tolist() == [[30, 55, 90, 100], [1, 1, 1, 1]]
+    assert d10[1000].tolist() == [[50, 70, 95, 140], [1, 1, 1, 1]]
+    assert d16[800].tolist() == [[35, 70, 120, 130], [1, 1, 1, 1]]
+    assert d16[1000].tolist() == [[25, 75, 100, 135], [1, 1, 1, 1]]
 
     # Check stats data
     assert isinstance(s10, pd.DataFrame)

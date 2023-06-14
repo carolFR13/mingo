@@ -1,7 +1,7 @@
 from .utils import reformat
 from .database import Database
 from .analysis import (
-    Hit_distribution, Shower_depth, Plane_hits, Scattering
+    Hit_distribution, Shower_depth, Plane_hits, Scattering, report
 )
 
 __all__ = [
@@ -10,5 +10,6 @@ __all__ = [
     "Hit_distribution",
     "Shower_depth",
     "Plane_hits",
-    "Scattering"
+    "Scattering",
+    "report"
 ]

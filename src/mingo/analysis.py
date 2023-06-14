@@ -4,10 +4,13 @@ from sqlalchemy import func
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_pgf import PdfPages
 from typing import Any, Sequence, Literal
 from dataclasses import dataclass
 import pandas as pd
 import numpy as np
+from pathlib import Path
+from tqdm import tqdm
 
 
 @dataclass
@@ -19,12 +22,14 @@ class Plot_config:
     :param label: Label describing the property being ploted
     :param xscale: Scale to be used in the x axis
     :param yscale: Scale to be used in the y axis
+    :param report_name: File name for report
     """
 
     title: str = ""
     label: str = ""
     xscale: Literal["linear", "log", "symlog", "logit"] = "linear"
     yscale: Literal["linear", "log", "symlog", "logit"] = "linear"
+    report_name: str = "report.pdf"
 
 
 class Base:
@@ -33,6 +38,7 @@ class Base:
 
     :param db: Database object
     """
+    __name__ = "Base"
 
     def __init__(self, db: Database) -> None:
 
@@ -319,60 +325,91 @@ class Base:
 
         return fig
 
-    def report_figure(self) -> Figure:
+    def report_figure(self, save: bool = False,
+                      save_path: str | None = None) -> Figure:
         """
         Generate pairs of distribution plots and stats tables.
 
         Data is read from self.dist_data and self.stats_data
 
+        :param save: Wether to save the figure or not
+        :param save_path: Path to directory the report will be saved to
         :return fig: Generated figure
         """
 
-        items = len(self.dist_data.items())
+        # Figure configuration
+
+        label_font = {"weight": "light", "size": "small"}
+        base_color = "#aec7e8"
+        font_color = "#21486e"
+
         xlim: float = 0
         ylim: float = 0
 
-        fig = plt.figure(figsize=(10, 6 * items), layout="constrained")
-        spec = fig.add_gridspec(items, 1)
+        fig = plt.figure(figsize=(8.3, 11.7), layout=None)
+        spec = fig.add_gridspec(
+            ncols=2,
+            nrows=3,
+            left=0.1,
+            right=0.95,
+            top=0.93,
+            bottom=0.07,
+            wspace=0.1,
+            hspace=0.2,
+            width_ratios=[1, 1.2]
+        )
 
         for idx, key in enumerate(self.dist_data):
 
             dist = self.dist_data[key]
             stats = self.stats_data[key].round(2)
 
-            _fig = fig.add_subfigure(spec[idx, 0])
-            _spec = _fig.add_gridspec(1, 2)
-            ax_plot = _fig.add_subplot(_spec[0, 0])
-            ax_table = _fig.add_subplot(_spec[0, 1])
+            ax_plot = fig.add_subplot(spec[idx, 0])
+            ax_table = fig.add_subplot(spec[idx, 1])
 
             # Plot distribution
             for e, (val, count) in dist.items():
-                ax_plot.plot(val, count, label=f"{e:.0f} MeV")
+                ax_plot.plot(val, count, label=f"{e:.0f} MeV", linewidth=1)
 
             ax_plot.set_xscale(self.plot_config.xscale)
             ax_plot.set_yscale(self.plot_config.yscale)
-            ax_plot.set_xlabel(self.plot_config.label)
-            ax_plot.set_ylabel("Number of events")
-            ax_plot.set_title(key)
-            ax_plot.legend()
+            ax_plot.set_xlabel(self.plot_config.label,
+                               fontdict=label_font, labelpad=1)
+            ax_plot.set_ylabel("Number of events",
+                               fontdict=label_font, labelpad=1)
+            ax_plot.tick_params(labelsize="x-small")
+            ax_plot.legend(fontsize="xx-small")
 
             xlim = max(xlim, ax_plot.get_xlim()[1])
             ylim = max(ylim, ax_plot.get_ylim()[1])
 
             # Add table
             ax_table.axis("off")
+            ax_table.set_title(key, fontsize="medium", y=1, pad=-25)
             ax_table.table(
                 cellText=stats.values,
-                colLabels=stats.columns.tolist(),
-                loc="center"
+                colLabels=[
+                    r"$e_0$", r"$\mu$", r"$\sigma$", r"$\gamma_1$",
+                    r"$\beta_2$", "Med", r"$\mu / \sigma$"
+                ],
+                loc="center",
+                cellLoc="center",
+                rowLoc="center",
+                colColours=[base_color] * len(stats.columns)
             )
 
-        fig.suptitle(self.plot_config.title)
+        fig.suptitle(self.plot_config.title, weight="bold", color=font_color)
 
         for ax in fig.get_axes():
             if ax.axison:
                 ax.set_xlim((None, xlim))
                 ax.set_ylim((None, ylim))
+
+        # Save the figure if requested
+        if save and save_path is not None:
+            fig.savefig(
+                Path(save_path) / self.plot_config.report_name, dpi=300
+            )
 
         return fig
 
@@ -398,6 +435,8 @@ class Hit_distribution(Base):
     :param db: Database object
     """
 
+    __name__ = "Hit distribution"
+
     def __init__(self, db: Database) -> None:
 
         super().__init__(db)
@@ -409,6 +448,7 @@ class Hit_distribution(Base):
         self.plot_config.title = (
             "Distribution of hits per event as a function of initial energy"
         )
+        self.plot_config.report_name = "hit-distribution.pdf"
 
         return None
 
@@ -453,6 +493,8 @@ class Shower_depth(Base):
     :param db: Database object
     """
 
+    __name__ = "Shower depth"
+
     def __init__(self, db: Database) -> None:
 
         super().__init__(db)
@@ -464,6 +506,7 @@ class Shower_depth(Base):
         self.plot_config.title = (
             "Average shower depth as a function of initial energy"
         )
+        self.plot_config.report_name = "shower-depth.pdf"
 
         return None
 
@@ -534,6 +577,8 @@ class Plane_hits(Base):
 
         super().__init__(db)
 
+        self.__name__ = f"Plane {plane} hits"
+
         self.plane_number = plane
 
         # Plot configuration
@@ -544,6 +589,7 @@ class Plane_hits(Base):
             "Number of hits per event as a function of initial energy: "
             f"Plane {self.plane_number}"
         )
+        self.plot_config.report_name = f"hits-plane-{self.plane_number}.pdf"
 
         return None
 
@@ -617,6 +663,8 @@ class Scattering(Base):
 
         super().__init__(db)
 
+        self.__name__ = f"Scattering plane {plane}"
+
         self.plane_number = plane
 
         # Plot configuration
@@ -628,6 +676,9 @@ class Scattering(Base):
         self.plot_config.title = (
             "Hit scattering as a function of initial energy: "
             f"Plane {self.plane_number}"
+        )
+        self.plot_config.report_name = (
+            f"scattering-plane-{self.plane_number}.pdf"
         )
 
         return None
@@ -674,7 +725,7 @@ class Scattering(Base):
 
     def distribution(self, id: int, label: str, **kwargs) -> None:
         return super().distribution(id, label,
-                                    R=1, plane_num=self.plane_number)
+                                    R=0.2, plane_num=self.plane_number)
 
     def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
@@ -702,3 +753,53 @@ class Scattering(Base):
 
     def stats(self, id: int, label: str, **kwargs) -> None:
         return super().stats(id, label, plane_num=self.plane_number)
+
+
+def report(db: Database, path: str) -> None:
+    """
+    Generate complete report
+
+    :param db: Database object
+    :param path: Report's path
+    """
+
+    ids: list[int] = []
+    titles: list[str] = []
+
+    stmt = select(db.config.c.id, db.config.c.fk_p1,
+                  db.config.c.fk_p2, db.config.c.fk_p3, db.config.c.fk_p4)
+
+    with db.engine.connect() as conn:
+
+        for id, p1, p2, p3, p4 in conn.execute(stmt):
+
+            # Add configuration ID
+            ids.append(id)
+
+            # Generate title from plane ids
+            title = ""
+            for idx, id in enumerate([p1, p2, p3, p4]):
+                thick, = conn.scalars(
+                    select(db.plane.c.abs_thick).where(db.plane.c.id == id)
+                )
+                title += "NULL" if thick == 0 else f"{thick:.1f}"
+
+                if idx != 3:
+                    title += " - "
+
+            titles.append(title)
+
+    obj_list = [
+        Hit_distribution(db), Shower_depth(db), Plane_hits(db, 2),
+        Plane_hits(db, 3), Plane_hits(db, 4), Scattering(db, 2),
+        Scattering(db, 3), Scattering(db, 4)
+    ]
+
+    with PdfPages(path) as file:
+        print("Generating report\n")
+        for obj in tqdm(obj_list):
+            for id, title in zip(ids, titles):
+                obj(id, title)
+            file.savefig(obj.report_figure())
+
+    return None
