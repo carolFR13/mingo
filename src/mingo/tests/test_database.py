@@ -1,11 +1,9 @@
 from mingo import Database
-from typing import Union, Iterable
+from typing import Union
 import pytest
-from pathlib import Path
 from sqlalchemy import Table, MetaData, select
-from sqlalchemy.dialects.mysql import insert
 from mingo.tests.mock_data import (
-    make_mock_source, make_mock_database, MOCK_SOURCE_DATA, get_tmp,
+    MOCK_SOURCE_DATA,
     make_sources, make_mock_mingo
 )
 
