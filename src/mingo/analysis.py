@@ -1,6 +1,6 @@
 from mingo import Database
 from sqlalchemy import select, Double, Subquery, Select
-from sqlalchemy.sql import func
+from sqlalchemy import func
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
@@ -134,26 +134,62 @@ class Base:
 
         tmp = self._stats_tmp(id, plane_num)
 
+        _tmp = (
+            select(
+                tmp.c.e_0.label("e_0"),
+                tmp.c.val.label("val"),
+                func.avg(tmp.c.val, type_=Double)
+                .over(tmp.c.e_0)
+                .label("avg")
+            )
+        )
+
+        _func_std = func.sqrt(
+            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 2)) /
+            func.count(_tmp.c.val)
+        )
+
+        _func_skewness = (
+            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 3)) /
+            (func.count(_tmp.c.val) * func.pow(_func_std, 3))
+        )
+
+        _func_kurtosis = (
+            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 4)) /
+            (func.count(_tmp.c.val) * func.pow(_func_std, 4))
+        )
+
         with self.db.engine.connect() as conn:
 
             result = pd.DataFrame(
                 [
-                    [e_0, avg, median, std]
-                    for e_0, avg, median, std in conn.execute(
+                    [e_0, avg, std, skew, kurt]
+                    for e_0, avg, std, skew, kurt in conn.execute(
                         select(
-                            tmp.c.e_0,
-                            func.avg(tmp.c.val, type_=Double),
-                            func.median(tmp.c.val).over(tmp.c.e_0),
-                            func.stddev_samp(tmp.c.val, type_=Double)
+                            _tmp.c.e_0,
+                            _tmp.c.avg,
+                            _func_std,
+                            _func_skewness,
+                            _func_kurtosis
                         )
-                        .group_by(tmp.c.e_0)
+                        .group_by(_tmp.c.e_0)
                     )
-                ], columns=["e_0", "avg", "median", "std"]
+                ], columns=["e_0", "avg", "std", "skewness", "kurtosis"]
             )
+
+            result["median"] = [
+                median for e_0, median in conn.execute(
+                    select(
+                        tmp.c.e_0,
+                        func.median(tmp.c.val).over(tmp.c.e_0)
+                    )
+                    .distinct()
+                )
+            ]
 
         result["avg / std"] = result["avg"] / result["std"]
 
-        self.stats_data[label] = result.round(2)
+        self.stats_data[label] = result
 
         return None
 
@@ -302,7 +338,7 @@ class Base:
         for idx, key in enumerate(self.dist_data):
 
             dist = self.dist_data[key]
-            stats = self.stats_data[key]
+            stats = self.stats_data[key].round(2)
 
             _fig = fig.add_subfigure(spec[idx, 0])
             _spec = _fig.add_gridspec(1, 2)
@@ -638,7 +674,7 @@ class Scattering(Base):
 
     def distribution(self, id: int, label: str, **kwargs) -> None:
         return super().distribution(id, label,
-                                    R=0.1, plane_num=self.plane_number)
+                                    R=1, plane_num=self.plane_number)
 
     def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
