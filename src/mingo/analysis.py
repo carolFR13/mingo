@@ -9,8 +9,6 @@ from typing import Any, Sequence, Literal
 from dataclasses import dataclass
 import pandas as pd
 import numpy as np
-from pathlib import Path
-from tqdm import tqdm
 
 
 @dataclass
@@ -239,7 +237,7 @@ class Base:
             case _:
                 raise ValueError("Too many values for a single figure")
 
-        return fig, axs
+        return fig, axs     # type: ignore
 
     def plot_distribution(self) -> Figure:
         """
@@ -301,8 +299,8 @@ class Base:
             ax.plot(data["e_0"], data["avg"], label="Average")
             ax.fill_between(
                 data["e_0"],
-                data["avg"] - data["std"],
-                data["avg"] + data["std"],
+                data["avg"] - data["std"],      # type: ignore
+                data["avg"] + data["std"],      # type: ignore
                 label="Standard deviation", alpha=0.2
             )
             ax.scatter(
@@ -325,8 +323,7 @@ class Base:
 
         return fig
 
-    def report_figure(self, save: bool = False,
-                      save_path: str | None = None) -> Figure:
+    def report_figure(self) -> Figure:
         """
         Generate pairs of distribution plots and stats tables.
 
@@ -404,12 +401,6 @@ class Base:
             if ax.axison:
                 ax.set_xlim((None, xlim))
                 ax.set_ylim((None, ylim))
-
-        # Save the figure if requested
-        if save and save_path is not None:
-            fig.savefig(
-                Path(save_path) / self.plot_config.report_name, dpi=300
-            )
 
         return fig
 
@@ -796,9 +787,9 @@ def report(db: Database, path: str) -> None:
     ]
 
     with PdfPages(path) as file:
-        print("Generating report\n")
-        for obj in tqdm(obj_list):
+        for obj in obj_list:
             for id, title in zip(ids, titles):
+                print(f"Generating {obj.__name__} report for {title}")
                 obj(id, title)
             file.savefig(obj.report_figure())
 

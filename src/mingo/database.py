@@ -7,8 +7,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
-from tqdm import tqdm as bar
-
 
 # Expected extension of the header section of source files
 HEADER_LINES = 45
@@ -305,13 +303,7 @@ class Database:
             # Insert events and values
             event_list: list[dict[str, Union[int, float, str, None]]] = []
             hit_list: list[dict[str, Union[int, float, None]]] = []
-            for idx, line in enumerate(
-                bar(
-                    source.readlines(),
-                    desc=source_file.parent.name + "/" + source_file.name,
-                    ascii=True
-                )
-            ):
+            for idx, line in enumerate(source.readlines()):
                 data = line[:-1].split("\t")
                 match len(data):
                     case 8:

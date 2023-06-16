@@ -3,7 +3,7 @@ from typing import Union
 import pytest
 from sqlalchemy import Table, MetaData, select
 from mingo.tests.mock_data import (
-    MOCK_SOURCE_DATA,
+    MOCK_SOURCE_DATA, make_mock_database,
     make_sources, make_mock_mingo
 )
 
