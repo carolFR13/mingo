@@ -305,31 +305,31 @@ class Database:
             hit_list: list[dict[str, Union[int, float, None]]] = []
             for idx, line in enumerate(source.readlines()):
                 data = line[:-1].split("\t")
-                match len(data):
-                    case 8:
-                        event_list.append({
-                            "fk_config": config_id,
-                            "particle": particle,
-                            "e_0": float(data[1]),
-                            "theta": float(data[5]),
-                            "phi": float(data[6]),
-                            "n_hits": float(data[7])
-                        })
-                        event_id += 1
-                    case 5:
-                        hit_list.append({
-                            "fk_event": event_id,
-                            "plane": int(data[0]),
-                            "x": float(data[1]),
-                            "y": float(data[2]),
-                            "z": float(data[3]),
-                            "t": float(data[4])
-                        })
-                    case _:
-                        raise FormatError(
-                            "Unexpected format in line "
-                            f"{idx + 2 + HEADER_LINES} of {source_file}"
-                        )
+                size = len(data)
+                if size == 8:
+                    event_list.append({
+                        "fk_config": config_id,
+                        "particle": particle,
+                        "e_0": float(data[1]),
+                        "theta": float(data[5]),
+                        "phi": float(data[6]),
+                        "n_hits": float(data[7])
+                    })
+                    event_id += 1
+                elif size == 5:
+                    hit_list.append({
+                        "fk_event": event_id,
+                        "plane": int(data[0]),
+                        "x": float(data[1]),
+                        "y": float(data[2]),
+                        "z": float(data[3]),
+                        "t": float(data[4])
+                    })
+                else:
+                    raise FormatError(
+                        "Unexpected format in line "
+                        f"{idx + 2 + HEADER_LINES} of {source_file}"
+                    )
 
             with self.engine.connect() as conn:
                 conn.execute(insert(self.event), event_list)

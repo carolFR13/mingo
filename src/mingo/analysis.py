@@ -220,22 +220,40 @@ class Base:
         :return axs: Sequence of axes associated with subplots
         """
 
-        match len(self.dist_data.keys()):
-            case 1:
-                fig, axs = plt.subplots(1, 1, figsize=figsize)
-                axs = [axs]
-            case 2:
-                fig, axs = plt.subplots(1, 2, figsize=figsize)
-            case 3:
-                fig, axs = plt.subplots(2, 2, figsize=figsize)
-            case 4:
-                fig, axs = plt.subplots(2, 2, figsize=figsize)
-            case 5:
-                fig, axs = plt.subplots(2, 3, figsize=figsize)
-            case 6:
-                fig, axs = plt.subplots(2, 3, figsize=figsize)
-            case _:
-                raise ValueError("Too many values for a single figure")
+        size = len(self.dist_data.keys())
+
+        if size == 1:
+            fig, axs = plt.subplots(1, 1, figsize=figsize)
+            axs = [axs]
+        elif size == 2:
+            fig, axs = plt.subplots(1, 2, figsize=figsize)
+        elif size == 3:
+            fig, axs = plt.subplots(2, 2, figsize=figsize)
+        elif size == 4:
+            fig, axs = plt.subplots(2, 2, figsize=figsize)
+        elif size == 5:
+            fig, axs = plt.subplots(2, 3, figsize=figsize)
+        elif size == 6:
+            fig, axs = plt.subplots(2, 3, figsize=figsize)
+        else:
+            raise ValueError("Too many values for a single figure")
+
+        # match len(self.dist_data.keys()):
+        #     case 1:
+        #         fig, axs = plt.subplots(1, 1, figsize=figsize)
+        #         axs = [axs]
+        #     case 2:
+        #         fig, axs = plt.subplots(1, 2, figsize=figsize)
+        #     case 3:
+        #         fig, axs = plt.subplots(2, 2, figsize=figsize)
+        #     case 4:
+        #         fig, axs = plt.subplots(2, 2, figsize=figsize)
+        #     case 5:
+        #         fig, axs = plt.subplots(2, 3, figsize=figsize)
+        #     case 6:
+        #         fig, axs = plt.subplots(2, 3, figsize=figsize)
+        #     case _:
+        #         raise ValueError("Too many values for a single figure")
 
         return fig, axs     # type: ignore
 
