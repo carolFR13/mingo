@@ -329,9 +329,7 @@ class Base:
 
         Data is read from self.dist_data and self.stats_data
 
-        :param save: Wether to save the figure or not
-        :param save_path: Path to directory the report will be saved to
-        :return fig: Generated figure
+        :return fig: Figure with plots and tables
         """
 
         # Figure configuration
@@ -359,7 +357,7 @@ class Base:
         for idx, key in enumerate(self.dist_data):
 
             dist = self.dist_data[key]
-            stats = self.stats_data[key].round(2)
+            stats = self.stats_data[key].round(1)
 
             ax_plot = fig.add_subplot(spec[idx, 0])
             ax_table = fig.add_subplot(spec[idx, 1])
@@ -386,8 +384,8 @@ class Base:
             ax_table.table(
                 cellText=stats.values,
                 colLabels=[
-                    r"$e_0$", r"$\mu$", r"$\sigma$", r"$\gamma_1$",
-                    r"$\beta_2$", "Med", r"$\mu / \sigma$"
+                    r"$e_0$", r"$\mu$", r"$\sigma$", r"$S$",
+                    r"$\kappa$", "Med", r"$\mu / \sigma$"
                 ],
                 loc="center",
                 cellLoc="center",
@@ -746,12 +744,17 @@ class Scattering(Base):
         return super().stats(id, label, plane_num=self.plane_number)
 
 
-def report(db: Database, path: str) -> None:
+def report(
+        db: Database,
+        path: str,
+        scale: Literal["linear", "log", "symlog", "logit"] = "linear"
+) -> None:
     """
     Generate complete report
 
     :param db: Database object
     :param path: Report's path
+    :param scale: Y axis' scale for the distribution plots
     """
 
     ids: list[int] = []
@@ -788,8 +791,9 @@ def report(db: Database, path: str) -> None:
 
     with PdfPages(path) as file:
         for obj in obj_list:
+            obj.plot_config.yscale = scale
             for id, title in zip(ids, titles):
-                print(f"Generating {obj.__name__} report for {title}")
+                print(f"Generating {obj.__name__} report: {title}")
                 obj(id, title)
             file.savefig(obj.report_figure())
 
