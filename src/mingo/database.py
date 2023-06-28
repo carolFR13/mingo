@@ -8,8 +8,11 @@ from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
 
-# Expected extension of the header section of source files
+# Expected length of the header section of source files
 HEADER_LINES = 45
+
+# Valid extensions for data-files and directories
+VALID_EXTENSIONS = (".txt", ".csv", "")
 
 # Valid values for absorption plane materials and primary particles
 MATERIAL = ("Pb", "Fe", "W", "Polyethylene")
@@ -182,51 +185,87 @@ class Database:
 
         return None
 
+    def _fill_input_handler(
+            self, sources: str | Path | Iterable[str | Path]) -> list[Path]:
+
+        def __add_source(source: Path, source_list: list[Path]) -> list[Path]:
+            """Get paths to data-files from input and add them to list"""
+
+            # Coarse filter for undesired files
+            if source.suffix not in VALID_EXTENSIONS:
+                return source_list
+
+            if source.is_file():
+                # Check format and add to list
+                with source.open() as file:
+                    if file.readline() == "HEADER\n":
+                        source_list.append(source)
+            elif source.is_dir():
+                # Iterate over items in dir and add them to list
+                for _source in source.iterdir():
+                    __add_source(_source, source_list)
+            else:
+                raise ValueError(f"Invalid input: {source}")
+
+            return source_list
+
+        _sources: list[Path] = []
+        if isinstance(sources, str):
+            _sources = __add_source(Path(sources), _sources)
+        elif isinstance(sources, Path):
+            _sources = __add_source(sources, _sources)
+        elif isinstance(sources, Iterable):
+            for source in sources:
+                if isinstance(source, str):
+                    _sources = __add_source(Path(source), _sources)
+                elif isinstance(source, Path):
+                    _sources = __add_source(source, _sources)
+                else:
+                    raise TypeError(f"Unexpected type: {source}")
+        else:
+            raise TypeError(f"Unexpected type: {sources}")
+
+        return _sources
+
     def batch_fill(self, sources: Union[Path, Iterable[Path]]) -> None:
         """
-        Fill database from a set of source files.
-
-        :param sources: Path to directory with sources or list of paths
-        to source files. Directories are assumed to just contain sources.
+        DEPRECATED: Use fill instead
         """
-
-        if isinstance(sources, Path) and sources.is_dir():
-            _sources = [source for source in sources.iterdir()]
-        elif isinstance(sources, Iterable):
-            _sources = list(sources)
-        else:
-            raise TypeError(
-                f"Unexpected input type: {type(sources)}. "
-                f"Must be Path or Iterable[Path]."
-            )
-        print(f"Filling {self.engine.url.database} with source files:")
-        for source in _sources:
-            if not source.is_file():
-                raise ValueError(f"{str(source)} is not a file!")
-            else:
-                self.fill(source)
+        self.fill(sources)
 
         return None
 
-    def fill(self, source_file: Union[str, Path]) -> None:
+    def fill(self, sources: str | Path | Iterable[str | Path]) -> None:
         """
-        Fill database from source file
+        Fill database using data-files
 
-        NOTE: Since mariadb treats each NULL value as unique, the absence
-        of an absorption plane is represented by zero values in
-        the 'abs_z', 'abs_mat' and 'abs_thick' columns of the plane table.
-        Zero is an unfeasible value for these three parameters for the
-        following reasons:
-            - 'abs_thick' must be greater than 0 for any real plane.
-            - 'abs_mat' is the name of a material, which cannot be 0.
-            - 'abs_z' must be greater than 'abs_thick'.
+        NOTE: The abscence of an absorption plane is represented by zero
+        values of columns: 'abs_z', 'abs_mat' and 'abs_thick'. Zero is an
+        unfeasible value for each of these columns for the following reasons:
+            - 'abs_thick' must be greater than 0 for any real plane
+            - 'abs_mat' is the name of a material
+            - 'abs_z' must be greater than 'abs_thick' in absolute value
 
-        :param source: Absolute or relative path to source file
-        :return None:
+        :param sources: Path or sequence of paths to data-files or to
+        directories containing (exclusively) data-files.
         """
-        # Cast input to Path if needed
-        if isinstance(source_file, str):
-            source_file = Path(source_file)
+
+        # Take given input and turn it into a list of paths to data-files
+        source_list = self._fill_input_handler(sources)
+
+        for source in source_list:
+            print(
+                f"Filling {self.engine.url.database} with {source.parent.name}"
+                f"/{source.name}"
+            )
+            self._fill(source)
+
+        return None
+
+    def _fill(self, source_file: Path) -> None:
+        """
+        :param source: Path to source file
+        """
 
         # Ensure that database exists before proceeding
         if not sqlutils.database_exists(self.engine.url):

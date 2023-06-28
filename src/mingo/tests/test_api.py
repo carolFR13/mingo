@@ -3,7 +3,9 @@ from tempfile import gettempdir
 from platform import system
 from pathlib import Path
 from mingo.tests.mock_data import MOCK_SOURCE_DATA
-from mingo import *
+from mingo import (
+    Database, Hit_distribution, Shower_depth, Scattering, Plane_hits
+)
 import pandas as pd
 
 
