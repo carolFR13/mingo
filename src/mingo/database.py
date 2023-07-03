@@ -1,4 +1,4 @@
-from typing import Union, Iterable, Sequence
+from typing import Union, Iterable, Sequence, Any
 from pathlib import Path
 from sqlalchemy import (
     URL, create_engine, MetaData, Table, Column, ForeignKey, Integer, Double,
@@ -7,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
+from dataclasses import dataclass
 
 # Expected length of the header section of source files
 HEADER_LINES = 45
@@ -79,7 +80,7 @@ class Database:
 
         # Load or create database
         if sqlutils.database_exists(url):
-            self.make_meta(create=False)
+            self._make_meta(create=False)
         else:
             if ask_to_create:
                 do: str = input(
@@ -90,14 +91,14 @@ class Database:
                 do = "y"
             if do == "y":
                 print(f"Creating database {url.database}")
-                self.make_meta()
+                self._make_meta()
             else:
                 print("End execution")
                 exit(0)
 
         return None
 
-    def make_meta(self, create: bool = True) -> None:
+    def _make_meta(self, create: bool = True) -> None:
         """
         Create MetaData and Table objects for database and, if desired,
         create database with mingo schema
@@ -170,23 +171,9 @@ class Database:
 
         return None
 
-    def drop(self) -> None:
-        """
-        Drop database
-        """
-
-        if sqlutils.database_exists(self.engine.url):
-            print(f"Dropping database: {self.engine.url.database}")
-            sqlutils.drop_database(self.engine.url)
-        else:
-            raise FileNotFoundError(
-                f"Database '{self.engine.url.database}' not found"
-            )
-
-        return None
-
     def _fill_input_handler(
             self, sources: str | Path | Iterable[str | Path]) -> list[Path]:
+        """Turn any valid input for fill into a list of paths to data files"""
 
         def __add_source(source: Path, source_list: list[Path]) -> list[Path]:
             """Get paths to data-files from input and add them to list"""
@@ -227,43 +214,10 @@ class Database:
 
         return _sources
 
-    def batch_fill(self, sources: Union[Path, Iterable[Path]]) -> None:
-        """
-        DEPRECATED: Use fill instead
-        """
-        self.fill(sources)
-
-        return None
-
-    def fill(self, sources: str | Path | Iterable[str | Path]) -> None:
-        """
-        Fill database using data-files
-
-        NOTE: The abscence of an absorption plane is represented by zero
-        values of columns: 'abs_z', 'abs_mat' and 'abs_thick'. Zero is an
-        unfeasible value for each of these columns for the following reasons:
-            - 'abs_thick' must be greater than 0 for any real plane
-            - 'abs_mat' is the name of a material
-            - 'abs_z' must be greater than 'abs_thick' in absolute value
-
-        :param sources: Path or sequence of paths to data-files or to
-        directories containing (exclusively) data-files.
-        """
-
-        # Take given input and turn it into a list of paths to data-files
-        source_list = self._fill_input_handler(sources)
-
-        for source in source_list:
-            print(
-                f"Filling {self.engine.url.database} with {source.parent.name}"
-                f"/{source.name}"
-            )
-            self._fill(source)
-
-        return None
-
     def _fill(self, source_file: Path) -> None:
         """
+        Read data from data-file and insert it into the database
+
         :param source: Path to source file
         """
 
@@ -374,6 +328,56 @@ class Database:
                 conn.execute(insert(self.event), event_list)
                 conn.execute(insert(self.hit), hit_list)
                 conn.commit()
+
+        return None
+
+    def batch_fill(self, sources: Union[Path, Iterable[Path]]) -> None:
+        """
+        DEPRECATED: Use fill instead
+        """
+        self.fill(sources)
+
+        return None
+
+    def fill(self, sources: str | Path | Iterable[str | Path]) -> None:
+        """
+        Fill database using data-files (API)
+
+        NOTE: The abscence of an absorption plane is represented by zero
+        values of columns: 'abs_z', 'abs_mat' and 'abs_thick'. Zero is an
+        unfeasible value for each of these columns for the following reasons:
+            - 'abs_thick' must be greater than 0 for any real plane
+            - 'abs_mat' is the name of a material
+            - 'abs_z' must be greater than 'abs_thick' in absolute value
+
+        :param sources: Path or sequence of paths to data-files or to
+        directories containing (exclusively) data-files.
+        """
+
+        # Take given input and turn it into a list of paths to data-files
+        source_list = self._fill_input_handler(sources)
+
+        for source in source_list:
+            print(
+                f"Filling {self.engine.url.database} with {source.parent.name}"
+                f"/{source.name}"
+            )
+            self._fill(source)
+
+        return None
+
+    def drop(self) -> None:
+        """
+        Drop database
+        """
+
+        if sqlutils.database_exists(self.engine.url):
+            print(f"Dropping database: {self.engine.url.database}")
+            sqlutils.drop_database(self.engine.url)
+        else:
+            raise FileNotFoundError(
+                f"Database '{self.engine.url.database}' not found"
+            )
 
         return None
 
