@@ -1,13 +1,12 @@
-from typing import Union, Iterable, Sequence, Any
+from typing import Union, Iterable, Sequence
 from pathlib import Path
 from sqlalchemy import (
-    URL, create_engine, MetaData, Table, Column, ForeignKey, Integer, Double,
-    Enum, select, func, UniqueConstraint, text
+    URL, create_engine, MetaData, Table, Column, Integer, Double,
+    Enum, select, func, UniqueConstraint, text, ForeignKeyConstraint
 )
 from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
-from dataclasses import dataclass
 
 # Expected length of the header section of source files
 HEADER_LINES = 45
@@ -116,14 +115,22 @@ class Database:
             "config",
             self.meta,
             Column("id", Integer, primary_key=True, autoincrement=True),
-            Column("fk_p1", Integer, ForeignKey("plane.id"), nullable=False),
-            Column("fk_p2", Integer, ForeignKey("plane.id"), nullable=False),
-            Column("fk_p3", Integer, ForeignKey("plane.id"), nullable=False),
-            Column("fk_p4", Integer, ForeignKey("plane.id"), nullable=False),
+            Column("fk_p1", Integer, nullable=False),
+            Column("fk_p2", Integer, nullable=False),
+            Column("fk_p3", Integer, nullable=False),
+            Column("fk_p4", Integer, nullable=False),
             Column("z_p1", Double, nullable=False),
             Column("z_p2", Double, nullable=False),
             Column("z_p3", Double, nullable=False),
             Column("z_p4", Double, nullable=False),
+            ForeignKeyConstraint(["fk_p1"], ["plane.id"],
+                                 ondelete="CASCADE", onupdate="CASCADE"),
+            ForeignKeyConstraint(["fk_p2"], ["plane.id"],
+                                 ondelete="CASCADE", onupdate="CASCADE"),
+            ForeignKeyConstraint(["fk_p3"], ["plane.id"],
+                                 ondelete="CASCADE", onupdate="CASCADE"),
+            ForeignKeyConstraint(["fk_p4"], ["plane.id"],
+                                 ondelete="CASCADE", onupdate="CASCADE"),
             UniqueConstraint("fk_p1", "fk_p2", "fk_p3", "fk_p4")
         )
 
@@ -146,24 +153,28 @@ class Database:
             "event",
             self.meta,
             Column("id", Integer, primary_key=True),
-            Column("fk_config", Integer, ForeignKey("config.id")),
+            Column("fk_config", Integer),
             Column("particle", PARTICLE_ENUM, nullable=False),
             Column("e_0", Double, nullable=False),
             Column("theta", Double, nullable=False),
             Column("phi", Double, nullable=False),
-            Column("n_hits", Integer, nullable=False)
+            Column("n_hits", Integer, nullable=False),
+            ForeignKeyConstraint(["fk_config"], ["config.id"],
+                                 ondelete="CASCADE", onupdate="CASCADE")
         )
 
         self.hit = Table(
             "hit",
             self.meta,
             Column("id", Integer, primary_key=True, autoincrement=True),
-            Column("fk_event", Integer, ForeignKey("event.id")),
+            Column("fk_event", Integer),
             Column("plane", Integer, nullable=False),
             Column("x", Double, nullable=True),
             Column("y", Double, nullable=True),
             Column("z", Double, nullable=True),
-            Column("t", Double, nullable=True)
+            Column("t", Double, nullable=True),
+            ForeignKeyConstraint(["fk_event"], ["event.id"],
+                                 ondelete="CASCADE", onupdate="CASCADE")
         )
 
         if create:
