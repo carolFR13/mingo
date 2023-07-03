@@ -1,4 +1,4 @@
-from typing import Union, Iterable, Sequence
+from typing import Union, Iterable, Sequence, Any
 from pathlib import Path
 from sqlalchemy import (
     URL, create_engine, MetaData, Table, Column, ForeignKey, Integer, Double,
@@ -7,9 +7,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import insert
 import sqlalchemy_utils as sqlutils
 from .errors import FormatError
+from dataclasses import dataclass
 
-# Expected extension of the header section of source files
+# Expected length of the header section of source files
 HEADER_LINES = 45
+
+# Valid extensions for data-files and directories
+VALID_EXTENSIONS = (".txt", ".csv", "")
 
 # Valid values for absorption plane materials and primary particles
 MATERIAL = ("Pb", "Fe", "W", "Polyethylene")
@@ -76,7 +80,7 @@ class Database:
 
         # Load or create database
         if sqlutils.database_exists(url):
-            self.make_meta(create=False)
+            self._make_meta(create=False)
         else:
             if ask_to_create:
                 do: str = input(
@@ -87,14 +91,14 @@ class Database:
                 do = "y"
             if do == "y":
                 print(f"Creating database {url.database}")
-                self.make_meta()
+                self._make_meta()
             else:
                 print("End execution")
                 exit(0)
 
         return None
 
-    def make_meta(self, create: bool = True) -> None:
+    def _make_meta(self, create: bool = True) -> None:
         """
         Create MetaData and Table objects for database and, if desired,
         create database with mingo schema
@@ -167,66 +171,55 @@ class Database:
 
         return None
 
-    def drop(self) -> None:
-        """
-        Drop database
-        """
+    def _fill_input_handler(
+            self, sources: str | Path | Iterable[str | Path]) -> list[Path]:
+        """Turn any valid input for fill into a list of paths to data files"""
 
-        if sqlutils.database_exists(self.engine.url):
-            print(f"Dropping database: {self.engine.url.database}")
-            sqlutils.drop_database(self.engine.url)
-        else:
-            raise FileNotFoundError(
-                f"Database '{self.engine.url.database}' not found"
-            )
+        def __add_source(source: Path, source_list: list[Path]) -> list[Path]:
+            """Get paths to data-files from input and add them to list"""
 
-        return None
+            # Coarse filter for undesired files
+            if source.suffix not in VALID_EXTENSIONS:
+                return source_list
 
-    def batch_fill(self, sources: Union[Path, Iterable[Path]]) -> None:
-        """
-        Fill database from a set of source files.
-
-        :param sources: Path to directory with sources or list of paths
-        to source files. Directories are assumed to just contain sources.
-        """
-
-        if isinstance(sources, Path) and sources.is_dir():
-            _sources = [source for source in sources.iterdir()]
-        elif isinstance(sources, Iterable):
-            _sources = list(sources)
-        else:
-            raise TypeError(
-                f"Unexpected input type: {type(sources)}. "
-                f"Must be Path or Iterable[Path]."
-            )
-        print(f"Filling {self.engine.url.database} with source files:")
-        for source in _sources:
-            if not source.is_file():
-                raise ValueError(f"{str(source)} is not a file!")
+            if source.is_file():
+                # Check format and add to list
+                with source.open() as file:
+                    if file.readline() == "HEADER\n":
+                        source_list.append(source)
+            elif source.is_dir():
+                # Iterate over items in dir and add them to list
+                for _source in source.iterdir():
+                    __add_source(_source, source_list)
             else:
-                self.fill(source)
+                raise ValueError(f"Invalid input: {source}")
 
-        return None
+            return source_list
 
-    def fill(self, source_file: Union[str, Path]) -> None:
+        _sources: list[Path] = []
+        if isinstance(sources, str):
+            _sources = __add_source(Path(sources), _sources)
+        elif isinstance(sources, Path):
+            _sources = __add_source(sources, _sources)
+        elif isinstance(sources, Iterable):
+            for source in sources:
+                if isinstance(source, str):
+                    _sources = __add_source(Path(source), _sources)
+                elif isinstance(source, Path):
+                    _sources = __add_source(source, _sources)
+                else:
+                    raise TypeError(f"Unexpected type: {source}")
+        else:
+            raise TypeError(f"Unexpected type: {sources}")
+
+        return _sources
+
+    def _fill(self, source_file: Path) -> None:
         """
-        Fill database from source file
+        Read data from data-file and insert it into the database
 
-        NOTE: Since mariadb treats each NULL value as unique, the absence
-        of an absorption plane is represented by zero values in
-        the 'abs_z', 'abs_mat' and 'abs_thick' columns of the plane table.
-        Zero is an unfeasible value for these three parameters for the
-        following reasons:
-            - 'abs_thick' must be greater than 0 for any real plane.
-            - 'abs_mat' is the name of a material, which cannot be 0.
-            - 'abs_z' must be greater than 'abs_thick'.
-
-        :param source: Absolute or relative path to source file
-        :return None:
+        :param source: Path to source file
         """
-        # Cast input to Path if needed
-        if isinstance(source_file, str):
-            source_file = Path(source_file)
 
         # Ensure that database exists before proceeding
         if not sqlutils.database_exists(self.engine.url):
@@ -335,6 +328,56 @@ class Database:
                 conn.execute(insert(self.event), event_list)
                 conn.execute(insert(self.hit), hit_list)
                 conn.commit()
+
+        return None
+
+    def batch_fill(self, sources: Union[Path, Iterable[Path]]) -> None:
+        """
+        DEPRECATED: Use fill instead
+        """
+        self.fill(sources)
+
+        return None
+
+    def fill(self, sources: str | Path | Iterable[str | Path]) -> None:
+        """
+        Fill database using data-files (API)
+
+        NOTE: The abscence of an absorption plane is represented by zero
+        values of columns: 'abs_z', 'abs_mat' and 'abs_thick'. Zero is an
+        unfeasible value for each of these columns for the following reasons:
+            - 'abs_thick' must be greater than 0 for any real plane
+            - 'abs_mat' is the name of a material
+            - 'abs_z' must be greater than 'abs_thick' in absolute value
+
+        :param sources: Path or sequence of paths to data-files or to
+        directories containing (exclusively) data-files.
+        """
+
+        # Take given input and turn it into a list of paths to data-files
+        source_list = self._fill_input_handler(sources)
+
+        for source in source_list:
+            print(
+                f"Filling {self.engine.url.database} with {source.parent.name}"
+                f"/{source.name}"
+            )
+            self._fill(source)
+
+        return None
+
+    def drop(self) -> None:
+        """
+        Drop database
+        """
+
+        if sqlutils.database_exists(self.engine.url):
+            print(f"Dropping database: {self.engine.url.database}")
+            sqlutils.drop_database(self.engine.url)
+        else:
+            raise FileNotFoundError(
+                f"Database '{self.engine.url.database}' not found"
+            )
 
         return None
 
