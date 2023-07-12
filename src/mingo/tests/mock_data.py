@@ -2,7 +2,7 @@ from platform import system
 from tempfile import gettempdir
 from pathlib import Path
 import pytest
-from mingo import Database, DBInput
+from mingo import DBInput
 from typing import Union, Iterable
 
 # DATABASE TEST CONFIGURATION
@@ -893,22 +893,6 @@ def make_sources(
             source.unlink()
 
 
-def make_mock_mingo():
-
-    db = Database("mock_database", ask_to_create=False)
-
-    names = [key for key in MOCK_SOURCE_DATA.keys()]
-    data_list = [MOCK_SOURCE_DATA[key] for key in names]
-
-    try:
-        sourcegen = make_sources(names, data_list)
-        for source in sourcegen:
-            db.fill(source)
-        yield db
-    finally:
-        db.drop()
-
-
 @pytest.fixture()
 def make_mock_source(request):
     """
@@ -926,14 +910,3 @@ def make_mock_source(request):
     source_file.write_text(content)
     yield source_file
     source_file.unlink()
-
-
-@pytest.fixture()
-def make_mock_database(monkeypatch):
-    """
-    Create temporary database for testing
-    """
-    monkeypatch.setattr("builtins.input", lambda _: "y")
-    mock_db = Database("mock_database", True)
-    yield mock_db
-    mock_db.drop()
