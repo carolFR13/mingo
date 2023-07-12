@@ -10,11 +10,7 @@ Mingo is a Python package with data analysis utilities for the MiniTrasgo projec
     pip install "git+https://github.com/alfonsoSR/mingo.git"
     ```
 
-2. **Install MariaDB**
-
-    - On [macOS](https://mariadb.com/resources/blog/installing-mariadb-10-1-16-on-mac-os-x-with-homebrew/)
-    - On [Linux](https://opensource.com/article/20/10/mariadb-mysql-linux)
-    - On [Windows](https://www.mariadbtutorial.com/getting-started/install-mariadb/)
+2. **Install [PostgreSQL](https://www.postgresql.org/download/)**
 
 ## Usage
 

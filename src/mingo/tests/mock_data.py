@@ -2,11 +2,13 @@ from platform import system
 from tempfile import gettempdir
 from pathlib import Path
 import pytest
-from mingo import Database
+from mingo import Database, DBInput
 from typing import Union, Iterable
 
-# DATA FOR MOCK SOURCE FILES
+# DATABASE TEST CONFIGURATION
+DEFAULT_INPUT = DBInput("mock_database", username="alfonso")
 
+# DATA FOR MOCK SOURCE FILES
 MOCK_SOURCE_DATA = {
     "10-16-800": """HEADER
     CASE

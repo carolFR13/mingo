@@ -1,5 +1,5 @@
 from .utils import reformat
-from .database import Database
+from .database import Database, DBInput
 from .analysis import (
     Hit_distribution, Shower_depth, Plane_hits, Scattering, report
 )
@@ -7,6 +7,7 @@ from .analysis import (
 __all__ = [
     "reformat",
     "Database",
+    "DBInput",
     "Hit_distribution",
     "Shower_depth",
     "Plane_hits",

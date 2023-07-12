@@ -2,10 +2,9 @@ import pytest
 from tempfile import gettempdir
 from platform import system
 from pathlib import Path
-from mingo.tests.mock_data import MOCK_SOURCE_DATA
-from mingo import (
-    Database, Hit_distribution, Shower_depth, Scattering, Plane_hits
-)
+from mingo.tests.mock_data import MOCK_SOURCE_DATA, DEFAULT_INPUT
+from mingo import (Database, Hit_distribution,
+                   Shower_depth, Scattering, Plane_hits)
 import pandas as pd
 
 
@@ -29,49 +28,51 @@ def make_sources():
 @pytest.fixture(scope="module")
 def make_database(make_sources: list[Path]):
 
-    db = Database("mock_database", ask_to_create=False)
+    db = Database(DEFAULT_INPUT, ask_to_create=False)
     sources = make_sources
 
-    for source in sources:
-        db.fill(source)
-
-    yield db
-
-    db.drop()
+    try:
+        # Loop over files instead of using parent to ensure that files are
+        # always inserted in the same order. Otherwise, the value of the ids
+        # (used in assertions) may vary between computers
+        for source in sources:
+            db.fill(source)
+        yield db
+    finally:
+        db.drop()
 
 
 @pytest.mark.parametrize(
     "params", [
-        (1, 999, 999, 22, 0, "0", 0),
+        (1, 999, 999, 22, None, None, None),
         (2, 999, 999, 22, 22, "Pb", 10.4),
-        (3, 999, 999, 22, 222, "Pb", 16.2),
-        (4, 999, 999, 22, 22, "Pb", 16.2),
-        (5, 999, 999, 22, 222, "Pb", 10.4),
-        (None, 0, 0, 0, 0, "0", 0)
+        (4, 999, 999, 22, 222, "Pb", 16.2),
+        (10, 999, 999, 22, 22, "Pb", 16.2),
+        (12, 999, 999, 22, 222, "Pb", 10.4),
+        (None, 0, 0, 0, None, None, None)
     ]
 )
 def test_get_plane_id(make_database: Database, params) -> None:
     """Get plane ID from configuration data"""
 
     db = make_database
-
-    id, size_x, size_y, size_z, abs_z, abs_mat, abs_thick = params
+    _input = db.PlaneInput(params[1], params[2], params[3],
+                           params[4], params[5], params[6])
+    id = params[0]
 
     if id is None:
         with pytest.raises(ValueError):
-            assert db.get_plane_id(
-                size_x, size_y, size_z, abs_z, abs_mat, abs_thick) == id
+            assert db.get_plane_id(_input) == id
     else:
-        assert db.get_plane_id(
-            size_x, size_y, size_z, abs_z, abs_mat, abs_thick) == id
+        assert db.get_plane_id(_input) == id
 
     return None
 
 
 @pytest.mark.parametrize(
     "params", [
-        (1, (1, 2, 1, 3), (0, 100, 200, 400)),
-        (2, (1, 4, 1, 5), (0, 100, 200, 400)),
+        (1, (1, 2, 1, 4), (0, 100, 200, 400)),
+        (3, (1, 10, 1, 12), (0, 100, 200, 400)),
         (None, (1, 2, 1, 1), (0, 100, 200, 400)),
         (None, (1, 2, 1, 3), (0, 100, 200, 300))
     ]
@@ -81,13 +82,16 @@ def test_get_config_id(make_database: Database, params) -> None:
 
     db = make_database
 
-    id, id_list, z_list = params
+    id = params[0]
+    _input = db.ConfigInput(params[1][0], params[1][1], params[1][2],
+                            params[1][3], params[2][0], params[2][1],
+                            params[2][2], params[2][3])
 
     if id is None:
         with pytest.raises(ValueError):
-            assert db.get_config_id(id_list, z_list) == id
+            assert db.get_config_id(_input) == id
     else:
-        assert db.get_config_id(id_list, z_list) == id
+        assert db.get_config_id(_input) == id
 
     return None
 
@@ -98,7 +102,7 @@ def test_hit_distribution(make_database: Database) -> None:
 
     hits = Hit_distribution(db)
     hits(1, "1016")
-    hits(2, "1610")
+    hits(3, "1610")
 
     d10 = hits.dist_data["1016"]
     d16 = hits.dist_data["1610"]
@@ -138,7 +142,7 @@ def test_shower_depth(make_database: Database) -> None:
 
     depth = Shower_depth(db)
     depth(1, "1016")
-    depth(2, "1610")
+    depth(3, "1610")
 
     d10 = depth.dist_data["1016"]
     d16 = depth.dist_data["1610"]
@@ -178,7 +182,7 @@ def test_plane_hits(make_database: Database) -> None:
 
     hits = Plane_hits(db, 3)
     hits(1, "1016")
-    hits(2, "1610")
+    hits(3, "1610")
 
     d10 = hits.dist_data["1016"]
     d16 = hits.dist_data["1610"]
@@ -218,7 +222,7 @@ def test_scattering(make_database: Database) -> None:
 
     R = Scattering(db, 3)
     R(1, "1016")
-    R(2, "1610")
+    R(3, "1610")
 
     d10 = R.dist_data["1016"]
     d16 = R.dist_data["1610"]

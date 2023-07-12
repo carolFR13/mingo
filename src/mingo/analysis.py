@@ -1,5 +1,5 @@
 from mingo import Database
-from sqlalchemy import select, Double, Subquery, Select
+from sqlalchemy import select, Subquery, Select, Float
 from sqlalchemy import func
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -76,21 +76,24 @@ class Base:
 
         with self.db.engine.connect() as conn:
 
-            energies = conn.execute(
-                select(self.event.e_0)
-                .where(self.event.fk_config == id)
-                .distinct()
-                .order_by(self.event.e_0)
-            )
+            energies = conn.execute(select(self.event.e_0)
+                                    .where(self.event.fk_config == id)
+                                    .distinct()
+                                    .order_by(self.event.e_0))
 
             for energy, in energies:
 
                 tmp = self._dist_tmp(id, energy, plane_num, R)
                 stmt = self._dist_stmt(tmp, id, energy)
 
-                self.dist_data[label][energy] = np.array([
+                _result = conn.execute(stmt).fetchall()
+
+                _data = np.array([
                     [val, count] for val, count in conn.execute(stmt)
-                ]).swapaxes(0, 1)
+                ])
+
+                if _result != []:
+                    self.dist_data[label][energy] = _data.swapaxes(0, 1)
 
         return None
 
@@ -106,7 +109,7 @@ class Base:
         :param R: Rounding factor
         """
 
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def _dist_stmt(self, tmp: None | Subquery,
                    id: int, energy: float) -> Select[tuple[Any, int]]:
@@ -118,7 +121,7 @@ class Base:
         :param energy: Initial energy of primary cosmic ray
         """
 
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def stats(self, id: int, label: str, **kwargs) -> None:
         """
@@ -139,29 +142,29 @@ class Base:
         tmp = self._stats_tmp(id, plane_num)
 
         _tmp = (
-            select(
-                tmp.c.e_0.label("e_0"),
-                tmp.c.val.label("val"),
-                func.avg(tmp.c.val, type_=Double)
-                .over(tmp.c.e_0)
-                .label("avg")
-            )
+            select(tmp.c.e_0.label("e_0"),
+                   tmp.c.val.label("val"),
+                   func.avg(tmp.c.val, type_=Float)
+                   .over(tmp.c.e_0)
+                   .label("avg")).alias("_tmp")
         )
 
-        _func_std = func.sqrt(
-            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 2)) /
-            func.count(_tmp.c.val)
-        )
+        _func_std = func.sqrt(func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 2)) /
+                              func.count(_tmp.c.val), type_=Float)
 
         _func_skewness = (
-            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 3)) /
-            (func.count(_tmp.c.val) * func.pow(_func_std, 3))
-        )
+            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 3, type_=Float)) /
+            (func.count(_tmp.c.val) * func.pow(_func_std, 3, type_=Float)))
+
+        # _func_skewness = (func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 3)) /
+        #                   (func.count(_tmp.c.val) * func.pow(_func_std, 3)))
 
         _func_kurtosis = (
-            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 4)) /
-            (func.count(_tmp.c.val) * func.pow(_func_std, 4))
-        )
+            func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 4, type_=Float)) /
+            (func.count(_tmp.c.val) * func.pow(_func_std, 4, type_=Float)))
+
+        # _func_kurtosis = (func.sum(func.pow(_tmp.c.val - _tmp.c.avg, 4)) /
+        #                   (func.count(_tmp.c.val) * func.pow(_func_std, 4)))
 
         with self.db.engine.connect() as conn:
 
@@ -169,25 +172,20 @@ class Base:
                 [
                     [e_0, avg, std, skew, kurt]
                     for e_0, avg, std, skew, kurt in conn.execute(
-                        select(
-                            _tmp.c.e_0,
-                            _tmp.c.avg,
-                            _func_std,
-                            _func_skewness,
-                            _func_kurtosis
-                        )
-                        .group_by(_tmp.c.e_0)
+                        select(_tmp.c.e_0,
+                               func.avg(_tmp.c.val, type_=Float),
+                               _func_std,
+                               _func_skewness,
+                               _func_kurtosis).group_by(_tmp.c.e_0)
                     )
                 ], columns=["e_0", "avg", "std", "skewness", "kurtosis"]
             )
 
             result["median"] = [
                 median for e_0, median in conn.execute(
-                    select(
-                        tmp.c.e_0,
-                        func.median(tmp.c.val).over(tmp.c.e_0)
-                    )
-                    .distinct()
+                    select(tmp.c.e_0,
+                           func.percentile_cont(0.5)
+                           .within_group(tmp.c.val)).group_by(tmp.c.e_0)
                 )
             ]
 
@@ -207,10 +205,9 @@ class Base:
 
         raise NotImplementedError
 
-    def _make_figure(
-            self,
-            figsize: tuple[int, int] = (12, 6)
-    ) -> tuple[Figure, Sequence[Axes]]:
+    def _make_figure(self,
+                     figsize: tuple[int, int] = (12, 6)
+                     ) -> tuple[Figure, Sequence[Axes]]:
         """
         Generate figure for distribution or stats plots with appropriate
         number of subplots
@@ -220,40 +217,22 @@ class Base:
         :return axs: Sequence of axes associated with subplots
         """
 
-        size = len(self.dist_data.keys())
-
-        if size == 1:
-            fig, axs = plt.subplots(1, 1, figsize=figsize)
-            axs = [axs]
-        elif size == 2:
-            fig, axs = plt.subplots(1, 2, figsize=figsize)
-        elif size == 3:
-            fig, axs = plt.subplots(2, 2, figsize=figsize)
-        elif size == 4:
-            fig, axs = plt.subplots(2, 2, figsize=figsize)
-        elif size == 5:
-            fig, axs = plt.subplots(2, 3, figsize=figsize)
-        elif size == 6:
-            fig, axs = plt.subplots(2, 3, figsize=figsize)
-        else:
-            raise ValueError("Too many values for a single figure")
-
-        # match len(self.dist_data.keys()):
-        #     case 1:
-        #         fig, axs = plt.subplots(1, 1, figsize=figsize)
-        #         axs = [axs]
-        #     case 2:
-        #         fig, axs = plt.subplots(1, 2, figsize=figsize)
-        #     case 3:
-        #         fig, axs = plt.subplots(2, 2, figsize=figsize)
-        #     case 4:
-        #         fig, axs = plt.subplots(2, 2, figsize=figsize)
-        #     case 5:
-        #         fig, axs = plt.subplots(2, 3, figsize=figsize)
-        #     case 6:
-        #         fig, axs = plt.subplots(2, 3, figsize=figsize)
-        #     case _:
-        #         raise ValueError("Too many values for a single figure")
+        match len(self.dist_data.keys()):
+            case 1:
+                fig, axs = plt.subplots(1, 1, figsize=figsize)
+                axs = [axs]
+            case 2:
+                fig, axs = plt.subplots(1, 2, figsize=figsize)
+            case 3:
+                fig, axs = plt.subplots(2, 2, figsize=figsize)
+            case 4:
+                fig, axs = plt.subplots(2, 2, figsize=figsize)
+            case 5:
+                fig, axs = plt.subplots(2, 3, figsize=figsize)
+            case 6:
+                fig, axs = plt.subplots(2, 3, figsize=figsize)
+            case _:
+                raise ValueError("Too many values for a single figure")
 
         return fig, axs     # type: ignore
 
@@ -315,15 +294,11 @@ class Base:
 
             data = self.stats_data[key]
             ax.plot(data["e_0"], data["avg"], label="Average")
-            ax.fill_between(
-                data["e_0"],
-                data["avg"] - data["std"],      # type: ignore
-                data["avg"] + data["std"],      # type: ignore
-                label="Standard deviation", alpha=0.2
-            )
-            ax.scatter(
-                data["e_0"], data["median"], label="Median", c="orange"
-            )
+            ax.fill_between(data["e_0"],
+                            data["avg"] - data["std"],      # type: ignore
+                            data["avg"] + data["std"],      # type: ignore
+                            label="Standard deviation", alpha=0.2)
+            ax.scatter(data["e_0"], data["median"], label="Median", c="orange")
 
             ax.set_title(key)
             ax.set_xlabel("Initial energy [MeV]")
@@ -360,17 +335,15 @@ class Base:
         ylim: float = 0
 
         fig = plt.figure(figsize=(8.3, 11.7), layout=None)
-        spec = fig.add_gridspec(
-            ncols=2,
-            nrows=3,
-            left=0.1,
-            right=0.95,
-            top=0.93,
-            bottom=0.07,
-            wspace=0.1,
-            hspace=0.2,
-            width_ratios=[1, 1.2]
-        )
+        spec = fig.add_gridspec(ncols=2,
+                                nrows=3,
+                                left=0.1,
+                                right=0.95,
+                                top=0.93,
+                                bottom=0.07,
+                                wspace=0.1,
+                                hspace=0.2,
+                                width_ratios=[1, 1.2])
 
         for idx, key in enumerate(self.dist_data):
 
@@ -401,10 +374,8 @@ class Base:
             ax_table.set_title(key, fontsize="medium", y=1, pad=-25)
             ax_table.table(
                 cellText=stats.values,
-                colLabels=[
-                    r"$e_0$", r"$\mu$", r"$\sigma$", r"$S$",
-                    r"$\kappa$", "Med", r"$\mu / \sigma$"
-                ],
+                colLabels=[r"$e_0$", r"$\mu$", r"$\sigma$", r"$S$",
+                           r"$\kappa$", "Med", r"$\mu / \sigma$"],
                 loc="center",
                 cellLoc="center",
                 rowLoc="center",
@@ -465,10 +436,8 @@ class Hit_distribution(Base):
     def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
         return (
-            select(
-                self.event.e_0.label("e_0"),
-                self.event.n_hits.label("val")
-            )
+            select(self.event.e_0.label("e_0"),
+                   self.event.n_hits.label("val"))
             .where(self.event.fk_config == id)
             .alias("tmp")
         )
@@ -484,12 +453,10 @@ class Hit_distribution(Base):
     def _dist_stmt(self, tmp: Subquery | None,
                    id: int, energy: float) -> Select[tuple[Any, int]]:
 
-        return (
-            select(self.event.n_hits, func.count(self.event.e_0))
-            .where(self.event.fk_config == id)
-            .where(self.event.e_0 == energy)
-            .group_by(self.event.n_hits)
-        )
+        return (select(self.event.n_hits, func.count(self.event.e_0))
+                .where(self.event.fk_config == id)
+                .where(self.event.e_0 == energy)
+                .group_by(self.event.n_hits))
 
 
 class Shower_depth(Base):
@@ -523,20 +490,18 @@ class Shower_depth(Base):
     def _dist_tmp(self, id: int, energy: float,
                   plane_num: int | None, R: float | None) -> Subquery | None:
 
-        return (
-            select(
-                self.event.e_0.label("e_0"),
-                (func.round(func.avg(self.hit.z) / R) * R).label("avg_z")
-            )
-            .select_from(
-                self.db.event.join(
-                    self.db.hit, self.event.id == self.hit.fk_event
-                )
-            )
+        _stmt = (
+            select(self.event.e_0,
+                   (func.round(func.avg(self.hit.z, type_=Float) / R) * R)
+                   .label("avg_z"))
+            .select_from(self.db.hit
+                         .join(self.db.event,
+                               self.event.id == self.hit.fk_event))
             .where(self.event.fk_config == id)
-            .group_by(self.hit.fk_event)
-            .alias("tmp")
-        )
+            .group_by(self.event.id)
+            .alias("tmp"))
+
+        return _stmt
 
     def _dist_stmt(self, tmp: Subquery | None,
                    id: int, energy: float) -> Select[tuple[Any, int]]:
@@ -544,28 +509,20 @@ class Shower_depth(Base):
         if tmp is None:
             raise TypeError("Expected tmp of type Subquery, got None")
 
-        return (
-            select(tmp.c.avg_z, func.count(tmp.c.avg_z))
-            .where(tmp.c.e_0 == energy)
-            .group_by(tmp.c.avg_z)
-        )
+        return (select(tmp.c.avg_z, func.count(tmp.c.avg_z))
+                .where(tmp.c.e_0 == energy)
+                .group_by(tmp.c.avg_z))
 
     def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
-        return (
-            select(
-                self.event.e_0.label("e_0"),
-                func.avg(self.hit.z).label("val")
-            )
-            .select_from(
-                self.db.event.join(
-                    self.db.hit, self.event.id == self.hit.fk_event
-                )
-            )
-            .where(self.event.fk_config == id)
-            .group_by(self.hit.fk_event)
-            .alias("tmp")
-        )
+        return (select(self.event.e_0.label("e_0"),
+                func.avg(self.hit.z, type_=Float).label("val"))
+                .select_from(self.db.event
+                             .join(self.db.hit,
+                                   self.event.id == self.hit.fk_event))
+                .where(self.event.fk_config == id)
+                .group_by(self.event.id)
+                .alias("tmp"))
 
     def stats(self, id: int, label: str, **kwargs) -> None:
         return super().stats(id, label)
@@ -604,17 +561,13 @@ class Plane_hits(Base):
                   plane_num: int | None, R: float | None) -> Subquery | None:
 
         return (
-            select((func.count(self.hit.id)).label("hits"))
-            .select_from(
-                self.db.event.join(
-                    self.db.hit, self.event.id == self.hit.fk_event
-                )
-            )
-            .where(
-                self.event.fk_config == id,
-                self.event.e_0 == energy,
-                self.hit.plane == plane_num
-            )
+            select((func.count(self.hit.id).label("hits")))
+            .select_from(self.db.hit
+                         .join(self.db.event,
+                               self.event.id == self.hit.fk_event))
+            .where(self.event.fk_config == id,
+                   self.event.e_0 == energy,
+                   self.hit.plane == plane_num)
             .group_by(self.event.id)
             .alias("tmp")
         )
@@ -625,33 +578,22 @@ class Plane_hits(Base):
         if tmp is None:
             raise TypeError("Expected tmp of Subquery type, got None")
 
-        return (
-            select(tmp.c.hits, func.count(tmp.c.hits))
-            .group_by(tmp.c.hits)
-        )
+        return (select(tmp.c.hits, func.count(tmp.c.hits))
+                .group_by(tmp.c.hits))
 
     def distribution(self, id: int, label: str, **kwargs) -> None:
         return super().distribution(id, label, plane_num=self.plane_number)
 
     def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
-        return (
-            select(
-                self.event.e_0.label("e_0"),
-                func.count(self.hit.id).label("val")
-            )
-            .select_from(
-                self.db.event.join(
-                    self.db.hit, self.event.id == self.hit.fk_event
-                )
-            )
-            .where(
-                self.event.fk_config == id,
-                self.hit.plane == plane_num
-            )
-            .group_by(self.hit.fk_event)
-            .alias("tmp")
-        )
+        return (select(self.event.e_0.label("e_0"),
+                       func.count(self.hit.id).label("val"))
+                .select_from(self.db.event
+                             .join(self.db.hit,
+                                   self.event.id == self.hit.fk_event))
+                .where(self.event.fk_config == id, self.hit.plane == plane_num)
+                .group_by(self.event.id)
+                .alias("tmp"))
 
     def stats(self, id: int, label: str, **kwargs) -> None:
         return super().stats(id, label, plane_num=self.plane_number)
@@ -694,28 +636,18 @@ class Scattering(Base):
                   plane_num: int | None, R: float | None) -> Subquery | None:
 
         return (
-            select(
-                self.event.id.label("id"),
-                self.event.e_0.label("e_0"),
-                (func.round(
-                    func.avg(
-                        func.sqrt(
-                            self.hit.x * self.hit.x + self.hit.y * self.hit.y
-                        )
-                    ) * R
-                ) / R).label("avg_R")
-            )
-            .select_from(
-                self.db.event.join(
-                    self.db.hit, self.event.id == self.hit.fk_event
-                )
-            )
-            .where(
-                self.event.fk_config == id,
-                self.event.e_0 == energy,
-                self.hit.plane == plane_num
-            )
-            .group_by(self.hit.fk_event)
+            select(self.event.id.label("id"),
+                   self.event.e_0.label("e_0"),
+                   (func.round(func.avg(func.sqrt(
+                       self.hit.x * self.hit.x + self.hit.y * self.hit.y
+                   )) * R) / R).label("avg_R"))
+            .select_from(self.db.event
+                         .join(self.db.hit,
+                               self.event.id == self.hit.fk_event))
+            .where(self.event.fk_config == id,
+                   self.event.e_0 == energy,
+                   self.hit.plane == plane_num)
+            .group_by(self.event.id)
             .alias("tmp")
         )
 
@@ -725,10 +657,8 @@ class Scattering(Base):
         if tmp is None:
             raise TypeError("Expected tmp of type Subquery, got None")
 
-        return (
-            select(tmp.c.avg_R, func.count(tmp.c.avg_R))
-            .group_by(tmp.c.avg_R)
-        )
+        return (select(tmp.c.avg_R, func.count(tmp.c.avg_R))
+                .group_by(tmp.c.avg_R))
 
     def distribution(self, id: int, label: str, **kwargs) -> None:
         return super().distribution(id, label,
@@ -736,37 +666,25 @@ class Scattering(Base):
 
     def _stats_tmp(self, id: int, plane_num: int | None) -> Subquery:
 
-        return (
-            select(
-                self.event.e_0.label("e_0"),
-                func.avg(
-                    func.sqrt(
-                        self.hit.x * self.hit.x + self.hit.y * self.hit.y
-                    )
-                ).label("val")
-            )
-            .select_from(
-                self.db.event.join(
-                    self.db.hit, self.event.id == self.hit.fk_event
-                )
-            )
-            .where(
-                self.event.fk_config == id,
-                self.hit.plane == plane_num
-            )
-            .group_by(self.hit.fk_event)
-            .alias("tmp")
-        )
+        return (select(self.event.e_0.label("e_0"),
+                       func.avg(func.sqrt(
+                           self.hit.x * self.hit.x + self.hit.y * self.hit.y
+                       )).label("val"))
+                .select_from(self.db.event
+                             .join(self.db.hit,
+                                   self.event.id == self.hit.fk_event))
+                .where(self.event.fk_config == id, self.hit.plane == plane_num)
+                .group_by(self.event.id)
+                .alias("tmp"))
 
     def stats(self, id: int, label: str, **kwargs) -> None:
         return super().stats(id, label, plane_num=self.plane_number)
 
 
-def report(
-        db: Database,
-        path: str,
-        scale: Literal["linear", "log", "symlog", "logit"] = "linear"
-) -> None:
+def report(db: Database,
+           path: str,
+           scale: Literal["linear", "log", "symlog", "logit"] = "linear"
+           ) -> None:
     """
     Generate complete report
 
@@ -791,21 +709,18 @@ def report(
             # Generate title from plane ids
             title = ""
             for idx, id in enumerate([p1, p2, p3, p4]):
-                thick, = conn.scalars(
-                    select(db.plane.c.abs_thick).where(db.plane.c.id == id)
-                )
-                title += "NULL" if thick == 0 else f"{thick:.1f}"
+                thick, = conn.scalars(select(db.plane.c.abs_thick)
+                                      .where(db.plane.c.id == id))
+                title += "NULL" if thick is None else f"{thick:.1f}"
 
                 if idx != 3:
                     title += " - "
 
             titles.append(title)
 
-    obj_list = [
-        Hit_distribution(db), Shower_depth(db), Plane_hits(db, 2),
-        Plane_hits(db, 3), Plane_hits(db, 4), Scattering(db, 2),
-        Scattering(db, 3), Scattering(db, 4)
-    ]
+    obj_list = [Hit_distribution(db), Shower_depth(db), Plane_hits(db, 2),
+                Plane_hits(db, 3), Plane_hits(db, 4), Scattering(db, 2),
+                Scattering(db, 3), Scattering(db, 4)]
 
     with PdfPages(path) as file:
         for obj in obj_list:
