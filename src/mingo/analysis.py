@@ -456,7 +456,8 @@ class Hit_distribution(Base):
         return (select(self.event.n_hits, func.count(self.event.e_0))
                 .where(self.event.fk_config == id)
                 .where(self.event.e_0 == energy)
-                .group_by(self.event.n_hits))
+                .group_by(self.event.n_hits)
+                .order_by(self.event.n_hits))
 
 
 class Shower_depth(Base):
