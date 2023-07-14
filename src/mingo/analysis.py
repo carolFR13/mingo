@@ -374,7 +374,7 @@ class Base:
             ax_table.set_title(key, fontsize="medium", y=1, pad=-25)
             ax_table.table(
                 cellText=stats.values,
-                colLabels=[r"$e_0$", r"$\mu$", r"$\sigma$", r"$S$",
+                colLabels=[r"$E_0$", r"$\mu$", r"$\sigma$", r"$S$",
                            r"$\kappa$", "Med", r"$\mu / \sigma$"],
                 loc="center",
                 cellLoc="center",
