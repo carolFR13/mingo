@@ -6,7 +6,7 @@ from mingo import DBInput
 from typing import Union, Iterable
 
 # DATABASE TEST CONFIGURATION
-DEFAULT_INPUT = DBInput("mock_database", username="alfonso")
+DEFAULT_INPUT = DBInput("mock_database", username="carol")
 
 # DATA FOR MOCK SOURCE FILES
 MOCK_SOURCE_DATA = {
