@@ -855,7 +855,7 @@ class Matrix:
         return None
 
 
-    def variables(self, id: int, energy: float, **kwargs) -> None:
+    def variables(self, id: int, energy: float, **kwargs) -> dict:
 
         '''
         Variables implementation for the matrix rows. 
@@ -908,7 +908,7 @@ class Matrix:
         
         return v
 
-    def get_matrix(self):
+    def get_matrix(self, id: int, energy: float, **kwargs) -> np.ndarray:
 
         '''
         Matrix getter method to obtain the variables in a matrix of lenght 
@@ -916,6 +916,9 @@ class Matrix:
         variable is not included.
         '''
 
+        R = kwargs["R"] if "R" in kwargs else None
+
+        self.variables(id, energy, R = R)
         n_rows = len(next(iter(self.variables_data.values())))
         matrix = np.zeros((n_rows, len(self.variables_data)), dtype=float)
 
@@ -930,27 +933,27 @@ class Matrix:
         
         return matrix
 
-    def get_eigenvalues(self):
+    def get_eigenvalues(self, id, energy, **kwargs):
 
         '''
         Computation of the singular value decomposition to obtain the 'eigenvalues'
         of a non-square matrix.
         '''
 
-        matrix = self.get_matrix()
+        matrix = self.get_matrix(id, energy, **kwargs)
         singular_values = np.linalg.svd(matrix, full_matrices=False, compute_uv=False)
 
         return singular_values**2
 
 
-    def get_eigenvectors(self):
+    def get_eigenvectors(self, id, energy, **kwargs):
 
         '''
         Computation of the left singular values (analogous to eigenvectors)
         of the non-square matrix.
         '''
 
-        matrix = self.get_matrix()
+        matrix = self.get_matrix(id, energy, **kwargs)
         _ , _ , vh = np.linalg.svd(matrix, full_matrices=False)
         left_singular_vectors = vh.T  # Transpose of the right singular vectors
 
@@ -959,7 +962,7 @@ class Matrix:
 
 class Normaliced_matrix(Matrix):
 
-    def get_matrix(self):
+    def get_matrix(self, id: int, energy: float, **kwargs) -> np.ndarray:
 
         '''
         Matrix getter method to obtain the variables in a matrix of lenght 
@@ -968,15 +971,15 @@ class Normaliced_matrix(Matrix):
         
         Variables in this case would be normaliced (by substracting its mean value).
         '''
-
-        super().get_matrix()
+        super().get_matrix(id, energy, **kwargs)
         n_rows, n_cols =  self.matrix_data.shape
         matrix = np.zeros((n_rows, n_cols), dtype=float)
 
 
         for col_idx, (label, data) in enumerate(self.variables_data.items()):
             if len(data) != n_rows:
-                print(f'The variable {label} does not have {n_rows} elements, it has {len(data)}.')
+                # print(f'The variable {label} does not have {n_rows} elements, it has {len(data)}.')
+                pass
             else:
                 mean = np.mean(data)
                 matrix[:, col_idx] = data - mean
@@ -988,7 +991,7 @@ class Normaliced_matrix(Matrix):
 
 class Standardised_matrix(Matrix):
         
-    def get_matrix(self):
+    def get_matrix(self, id: int, energy: float, **kwargs) -> np.ndarray:
 
         '''
         Matrix getter method to obtain the variables in a matrix of lenght 
@@ -999,14 +1002,15 @@ class Standardised_matrix(Matrix):
         dividing the result by its standar deviation).
         '''
 
-        super().get_matrix()
+        super().get_matrix(id, energy, **kwargs)
         n_rows, n_cols =  self.matrix_data.shape
         matrix = np.zeros((n_rows, n_cols), dtype=float)
 
 
         for col_idx, (label, data) in enumerate(self.variables_data.items()):
             if len(data) != n_rows:
-                print(f'The variable {label} does not have {n_rows} elements, it has {len(data)}.')
+                # print(f'The variable {label} does not have {n_rows} elements, it has {len(data)}.')
+                pass
             else:
                 mean = np.mean(data)
                 std = np.std(data)
