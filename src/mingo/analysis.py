@@ -617,7 +617,6 @@ class Shower_waist(Base):
         return super().stats(id, label)
 
 
-
 class Plane_hits(Base):
     """
     Number of hits per event on a given plane as function of the initial
@@ -692,7 +691,6 @@ class Plane_hits(Base):
     def stats(self, id: int, label: str, **kwargs) -> None:
         return super().stats(id, label, plane_num=self.plane_number)
     
-
 
 class Scattering(Base):
     """
@@ -778,7 +776,6 @@ class Scattering(Base):
     def stats(self, id: int, label: str, **kwargs) -> None:
         return super().stats(id, label, plane_num=self.plane_number)
     
-
 
 def report(db: Database,
            path: str,
@@ -932,15 +929,30 @@ class Matrix:
         self.matrix_data = matrix
         
         return matrix
+    
+    def get_std_matrix(self, id: int, energy: float, **kwargs) -> np.ndarray:
+
+
+        matrix = self.get_matrix(id, energy, **kwargs)
+        n_rows, _ =  self.matrix_data.shape
+
+        
+        std_matrix = (1/n_rows) * np.matmul(matrix.transpose(),matrix)
+
+        return std_matrix
+
 
     def get_eigenvalues(self, id, energy, **kwargs):
 
         '''
-        Computation of the singular value decomposition to obtain the 'eigenvalues'
-        of a non-square matrix.
+        Computation of the singular value decomposition (SVD) to obtain the singular
+        values of a non-square matrix (equivalent to eigenvalues).
+
+        We compute it by using the reduced form of SVD, following 
+        Daniel Peña's approach in 'Análisis de datos multivariantes'.
         '''
 
-        matrix = self.get_matrix(id, energy, **kwargs)
+        matrix = self.get_std_matrix(id, energy, **kwargs)
         singular_values = np.linalg.svd(matrix, full_matrices=False, compute_uv=False)
 
         return singular_values**2
@@ -951,12 +963,16 @@ class Matrix:
         '''
         Computation of the left singular values (analogous to eigenvectors)
         of the non-square matrix.
+
+        We are interested in the eigenvectos of matrix.transpose() @ matrix
+        since we want to get an eigenvector for each variable.
         '''
 
-        matrix = self.get_matrix(id, energy, **kwargs)
+        matrix = self.get_std_matrix(id, energy, **kwargs)
         _ , _ , vh = np.linalg.svd(matrix, full_matrices=False)
         left_singular_vectors = vh.T  # Transpose of the right singular vectors
 
+        #the matrix columns are the eigenvectors
         return left_singular_vectors
 
 
