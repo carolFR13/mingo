@@ -901,11 +901,11 @@ class Matrix:
         returns the variables name's list
         '''
 
-        v = ['hit_dist', 'shower_depth', 'shower_waist', 
+        list = ['hit_dist', 'shower_depth', 'shower_waist', 
             'plane_hits 2', 'plane_hits 3', 'plane_hits 4',
             'scattering 2','scattering 3', 'scattering 4',]
         
-        return v
+        return list
 
     def get_matrix(self, id: int, energy: float, **kwargs) -> np.ndarray:
 
@@ -932,19 +932,59 @@ class Matrix:
         
         return matrix
     
-    def get_std_matrix(self, id: int, energy: float, **kwargs) -> np.ndarray:
+    def get_std_matrix(self, id: int | None = None, energy: float | None = None, 
+                       matrix: np.ndarray | None = None, **kwargs) -> np.ndarray:
 
+        '''
+        Method to obtain the covariance matrix of the variable's matrix if matrix is None
+        '''
 
-        matrix = self.get_matrix(id, energy, **kwargs)
+        if matrix is None:
+            matrix = self.get_matrix(id, energy, **kwargs)
+
         n_rows, _ =  self.matrix_data.shape
-
         
         std_matrix = (1/n_rows) * np.matmul(matrix.transpose(),matrix)
 
         return std_matrix
+    
+    def get_eigenvalues(self, id: int | None = None, energy: float | None = None, 
+                        matrix: np.ndarray | None = None, **kwargs) -> np.ndarray:
+        
+        '''
+        Method to obtain the eigenvalues of a matrix. You either provide the matrix 
+        or the parameters to compute the eigenvalues of the covariance matrix by 
+        default.
 
+        '''
 
-    def get_eigenvalues(self, id, energy, **kwargs):
+        if matrix is None:
+            matrix = self.get_std_matrix(id = id, energy = energy, **kwargs)
+        
+        eigenvalues, _ = np.linalg.eig(matrix)
+
+        return eigenvalues
+
+    def get_eigenvectors(self , id: int | None = None, energy: float | None = None,
+                          matrix: np.ndarray | None = None, **kwargs) -> np.ndarray:
+        
+        '''
+        Method to obtain the eigenvectors of a matrix. You either provide the matrix 
+        or the parameters to compute the eigenvectors of the covariance matrix by 
+        default.
+
+        Returns the normalized eigenvectors, such that the column "eigenvectors[:,i]" is 
+        the eigenvector corresponding to the eigenvalue "eigenvalues[i]".
+        '''
+
+        if matrix is None:
+            matrix = self.get_std_matrix(id = id, energy = energy, **kwargs)
+        
+        _, eigenvectors = np.linalg.eig(matrix)
+
+        return eigenvectors
+    
+    def get_singularvalues(self, matrix: np.ndarray) -> np.ndarray:
 
         '''
         Computation of the singular value decomposition (SVD) to obtain the singular
@@ -954,23 +994,16 @@ class Matrix:
         Daniel Peña's approach in 'Análisis de datos multivariantes'.
         '''
 
-        matrix = self.get_std_matrix(id, energy, **kwargs)
         singular_values = np.linalg.svd(matrix, full_matrices=False, compute_uv=False)
 
         return singular_values**2
 
-
-    def get_eigenvectors(self, id, energy, **kwargs):
+    def get_singularvectors(self, matrix: np.ndarray) -> np.ndarray:
 
         '''
         Computation of the left singular values (analogous to eigenvectors)
         of the non-square matrix.
-
-        We are interested in the eigenvectos of matrix.transpose() @ matrix
-        since we want to get an eigenvector for each variable.
         '''
-
-        matrix = self.get_std_matrix(id, energy, **kwargs)
         _ , _ , vh = np.linalg.svd(matrix, full_matrices=False)
         left_singular_vectors = vh.T  # Transpose of the right singular vectors
 
