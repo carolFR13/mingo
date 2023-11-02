@@ -849,6 +849,8 @@ class Matrix:
         # Data storage
         self.variables_data: dict[str, np.array] = {}
         self.matrix_data: np.array | None = None
+        self.eigenvalues: np.ndarray | None = None
+        self.eigenvectors: np.ndarray | None = None
 
         return None
 
@@ -856,7 +858,8 @@ class Matrix:
     def variables(self, id: int, energy: float, **kwargs) -> dict:
 
         '''
-        Variables implementation for the matrix rows. 
+        Variables implementation for the matrix rows. Returns 
+        a dictionary with the variables arrays.
         
         :param id: ID of the desired detector configuration
         :param energy: Energy associated to the desired variables 
@@ -898,7 +901,7 @@ class Matrix:
     
     def variables_list(self):
         '''
-        returns the variables name's list
+        Returns the variables names list.
         '''
 
         list = ['hit_dist', 'shower_depth', 'shower_waist', 
@@ -936,7 +939,10 @@ class Matrix:
                        matrix: np.ndarray | None = None, **kwargs) -> np.ndarray:
 
         '''
-        Method to obtain the covariance matrix of the variable's matrix if matrix is None
+        Method to obtain the covariance matrix.
+         
+        :param matrix: if None it uses the variables matrix by default 
+        (must exist, i.e., get_matrix method has to be called before).
         '''
 
         if matrix is None:
@@ -953,15 +959,20 @@ class Matrix:
         
         '''
         Method to obtain the eigenvalues of a matrix. You either provide the matrix 
-        or the parameters to compute the eigenvalues of the covariance matrix by 
-        default.
-
+        or the parameters (i.e. id, energy, **kwargs) to compute the eigenvalues of 
+        the covariance matrix.
         '''
 
+        self.eigenvalues = None ; self.eigenvectors = None
+
         if matrix is None:
+
             matrix = self.get_std_matrix(id = id, energy = energy, **kwargs)
-        
-        eigenvalues, _ = np.linalg.eig(matrix)
+
+        eigenvalues, eigenvectors = np.linalg.eig(matrix)
+
+        self.eigenvalues = eigenvalues
+        self.eigenvectors = eigenvectors
 
         return eigenvalues
 
@@ -970,19 +981,153 @@ class Matrix:
         
         '''
         Method to obtain the eigenvectors of a matrix. You either provide the matrix 
-        or the parameters to compute the eigenvectors of the covariance matrix by 
-        default.
+        or the parameters to compute the eigenvectors of the covariance matrix.
+
+        If no matrix is given, it returns the stored eigenvectors (you must call
+        get_eigenvalues method before).
 
         Returns the normalized eigenvectors, such that the column "eigenvectors[:,i]" is 
         the eigenvector corresponding to the eigenvalue "eigenvalues[i]".
         '''
 
         if matrix is None:
-            matrix = self.get_std_matrix(id = id, energy = energy, **kwargs)
+            return self.eigenvectors
         
-        _, eigenvectors = np.linalg.eig(matrix)
+        else:
+            _, eigenvectors = np.linalg.eig(matrix)
+            return eigenvectors
+    
 
-        return eigenvectors
+    def print_eigenvalues(self, id: int | None = None, energy: float | None = None, 
+                        matrix: np.ndarray | None = None, **kwargs) -> Figure:
+        
+        '''
+        Method to plot a table with the values of the eigenvalues.
+
+        If no matrix given, it uses the stored eigenvalues (you need to
+        call get_eigenvalues method before)
+        '''
+
+        if matrix is None:
+            _eigenvalues = self.eigenvalues
+        else:
+            _eigenvalues = self.get_eigenvalues(id = id, energy = energy, matrix = matrix, 
+                                            **kwargs)
+
+        data = [[np.round(val,decimals = 4) for val in _eigenvalues]]
+
+        col_head = [str(val) for val in np.arange(1, len(_eigenvalues)+1)]
+        row_head = [r' $\lambda_i$  ']
+        nx = len(_eigenvalues) ; ny = 1
+        fig, ax = plt.subplots(figsize=(8, 1 + ny / 2.5))
+        ccolors = np.full(len(col_head), 'lavender')
+        rcolors = np.full(len(row_head), 'lavender')
+
+        tb = plt.table(cellText = data,
+                      colLabels=col_head,
+                      rowLabels=row_head,
+                      colColours=ccolors,
+                      rowColours=rcolors,
+                      cellLoc='center',
+                      loc='center')
+        
+        tb.scale(1, 2)
+        tb.set_fontsize(12)
+
+        ax.axis('off')
+        plt.show()
+
+        return None
+    
+    def print_eigenvectors(self , id: int | None = None, energy: float | None = None,
+                          matrix: np.ndarray | None = None, **kwargs) -> Figure:
+        
+        '''
+        Method to plot a table with the values of the eigenvectors.
+
+        If no matrix given, it uses the stored eigenvectors (you need to
+        call get_eigenvalues method before)
+        '''
+        
+        if matrix is None:
+            _eigenvectors = self.eigenvectors
+        else:
+            _eigenvectors = self.get_eigenvectors(id = id, energy = energy, matrix = matrix, 
+                                            **kwargs)
+        
+        nx, ny = _eigenvectors.shape
+
+        col_head = [r'$x_{%d}$' % i for i in range(1, ny + 1)]
+        row_head = [r' $\lambda_{%d}$ ' % i for i in range(1, nx + 1)]
+
+        fig, ax = plt.subplots(figsize=(8, 1 + ny / 2.5))
+
+        ccolors = np.full(len(col_head), 'lavender')
+        rcolors = np.full(len(row_head), 'lavender')
+
+        tb = plt.table(cellText = np.round(_eigenvectors.T, decimals=4),
+                      colLabels=col_head,
+                      rowLabels=row_head,
+                      colColours=ccolors,
+                      rowColours=rcolors,
+                      cellLoc='center',
+                      loc='center')
+
+        tb.scale(1, 2)
+        tb.set_fontsize(12)
+
+        ax.axis('off')
+        plt.show()
+
+        return None
+    
+    def print_variability(self , id: int | None = None, energy: float | None = None,
+                          matrix: np.ndarray | None = None, **kwargs) -> Figure:
+        
+        '''
+        Method to plot the variability explained by each eigenvalue.
+
+        If no matrix given, it uses the stored eigenvalues (you need to
+        call get_eigenvalues method before)
+        '''
+        
+        if matrix is None:
+            _eigenvalues = self.eigenvalues
+        else:
+            _eigenvalues = self.get_eigenvalues(id = id, energy = energy, matrix = matrix, 
+                                            **kwargs)
+
+        data = []
+        for i in range(len(_eigenvalues)):
+            p_i = _eigenvalues[i]/sum(_eigenvalues)
+            p_sum = sum(_eigenvalues[:i+1])/sum(_eigenvalues)
+            data.append([_eigenvalues[i], p_i, p_sum])
+
+
+        col_head = [r'$\lambda_i$',r'$P_i$',r'$\sum_i \ P_i$']
+        row_head = [' '+str(val)+' ' for val in np.arange(1, len(_eigenvalues)+1)]
+
+        nx = len(_eigenvalues) ; ny = 3
+
+        fig, ax = plt.subplots(figsize=(8, 1 + ny / 2.5))
+
+        ccolors = np.full(len(col_head), 'lavender')
+        rcolors = np.full(len(row_head), 'lavender')
+
+        tb = plt.table(cellText = np.round(data,decimals=4),
+                        colLabels=col_head,
+                        rowLabels=row_head,
+                        colColours=ccolors,
+                        rowColours=rcolors,
+                        cellLoc='center',
+                        loc='center')
+
+        tb.scale(1, 2)
+        tb.set_fontsize(12)
+
+        ax.axis('off')
+        plt.show()
+        return None
     
     def get_singularvalues(self, matrix: np.ndarray) -> np.ndarray:
 
@@ -1017,8 +1162,8 @@ class Normaliced_matrix(Matrix):
 
         '''
         Matrix getter method to obtain the variables in a matrix of lenght 
-        (num_events x num_variables). If the variable's len is not num_events, the 
-        variable is not included.
+        (num_events x num_variables). If the variable's len is not num_events, 
+        the variable is not included.
         
         Variables in this case would be normaliced (by substracting its mean value).
         '''
